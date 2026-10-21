@@ -108,6 +108,8 @@ def build(selected, edits_in=None):
         else:
             unit0 = 1 if st.get("invoice_unit") == "one" else inv["packages"]
         inv_size = inv.get("unit_size") or None
+        # No "Unit Size" on the invoice: alert and leave it out of the file (a hand-typed Invoice Unit brings it back)
+        nosize = not inv_size and not unit_typed
         # Buyer's Order No. typed wrong in Tally (e.g. 103000676 for 1030000676): match it to a known PO
         order, order_note = inv["order_no"], ""
         if order and order not in plants and not any(k[0] == order for k in items_map):
@@ -179,7 +181,7 @@ def build(selected, edits_in=None):
             need = float(it.get("qty") or 0)
             before = dict(left)
             part_batches = batches.get(it["part"], [])
-            if chosen and need > 0:
+            if chosen and need > 0 and not nosize:
                 for b in part_batches:
                     if need <= 0:
                         break
@@ -208,7 +210,9 @@ def build(selected, edits_in=None):
                 if short <= 0 and [(a["batch_no"], a["qty"]) for a in alloc] != ind:
                     deferred = True
                     left.update(before)
-            if chosen and need > 0 and not part_batches:
+            if nosize:
+                problems, unit, unit_src = [], None, "none"
+            elif chosen and need > 0 and not part_batches:
                 problems.append(f"No batch for {it['part']} in the DQMS report")
             elif chosen and short > 0:
                 problems.append(f"Batch balance short by {fmt(short)} (all batches of {it['part']} used up)")
@@ -222,14 +226,16 @@ def build(selected, edits_in=None):
                       part=it["part"], descr=it.get("descr", ""), qty=it.get("qty", 0), rate=it.get("rate"),
                       amount=it.get("amount"), dr=dr, drs=inv["drs"], line=line, line_src=line_src,
                       reason=reason, remarks=remarks, unit=unit, unit_src=unit_src, eway=eway, total=inv["total"],
-                      cgst=inv["cgst"], sgst=inv["sgst"], igst=inv["igst"], batches=alloc, deferred=deferred,
+                      cgst=inv["cgst"], sgst=inv["sgst"], igst=inv["igst"], batches=alloc, deferred=deferred, nosize=nosize,
                       batch_count=len(part_batches), short=short, problems=problems if chosen else [],
                       notes=notes, portal=pmsgs, run_id=inv["run_id"], selected=chosen,
                       file_name=inv["file_name"], edits=inv["edits"])
             lines.append(ln)
             if deferred:
                 summary["deferred"] = summary.get("deferred", 0) + 1
-            if not chosen or deferred:
+            if nosize and chosen:
+                summary["nosize"] = summary.get("nosize", 0) + 1
+            if not chosen or deferred or nosize:
                 continue
             summary["items"] += 1
             if problems:
@@ -261,7 +267,7 @@ def build(selected, edits_in=None):
                     b[COLS["batch_qty"]] = fmt(a["qty"])
                     b[COLS["batch_cons"]] = st["batch_considerable"]
                     out_rows.append(dict(cells=b, key=key, kind="batch"))
-        if chosen and any(not l.get("deferred") for l in lines if l["inv_no"] == inv["inv_no"]):
+        if chosen and any(not l.get("deferred") and not l.get("nosize") for l in lines if l["inv_no"] == inv["inv_no"]):
             summary["invoices"] += 1
             summary["value"] += inv["total"] or 0
             if inv["run_id"]:
@@ -279,6 +285,10 @@ def build(selected, edits_in=None):
             warnings.append(f"The DQMS report is from {rep_time[:16].replace('T', ' ')}, before the last file was made "
                             f"({last[0]['created_at'][:16].replace('T', ' ')}). If that file was uploaded on TAFE Channel, "
                             "download a fresh report so the batch balances include it.")
+    if summary.get("nosize"):
+        nl = sorted({ln["inv_no"] for ln in lines if ln.get("nosize") and ln["selected"]}, key=inv_sort_key)
+        warnings.append(f"{len(nl)} invoice(s) left out - no Unit Size on the invoice: {', '.join(nl)}. "
+                        "Add Unit Size in Tally and drop the invoice again, or type the Invoice Unit by hand.")
     if summary.get("deferred"):
         dl = sorted({ln["inv_no"] for ln in lines if ln.get("deferred")}, key=inv_sort_key)
         warnings.append(f"{len(dl)} invoice(s) held back for a 2nd upload: {', '.join(dl)}. The same part already uses "

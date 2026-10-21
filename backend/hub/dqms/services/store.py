@@ -192,14 +192,14 @@ def generate(selected, edits):
         raise ApiError(f"{s['blocked']} line(s) still need attention (red rows).")
     data = builder.to_csv(res["header"], res["rows"])
     st = load_settings()
-    dates = sorted({ln["inv_date"] for ln in res["lines"] if ln["selected"] and not ln.get("deferred") and ln["inv_date"]})
+    dates = sorted({ln["inv_date"] for ln in res["lines"] if ln["selected"] and not ln.get("deferred") and not ln.get("nosize") and ln["inv_date"]})
     tag = builder.dmy(dates[-1]).replace(".", "-") if dates else datetime.now().strftime("%d-%m-%Y")
     fname = st["file_name"].replace("{date}", tag)
     # TAFE Channel is picky about upload names: no spaces, one dot, ".csv" at the end
     base = re.sub(r"\.csv$", "", fname.strip(), flags=re.I)
     base = re.sub(r"[^A-Za-z0-9_\-]+", "_", base).strip("_.") or "template"
     fname = base + ".csv"
-    invs = sorted({ln["inv_no"] for ln in res["lines"] if ln["selected"] and not ln.get("deferred")}, key=builder.inv_sort_key)
+    invs = sorted({ln["inv_no"] for ln in res["lines"] if ln["selected"] and not ln.get("deferred") and not ln.get("nosize")}, key=builder.inv_sort_key)
     summary = dict(invoices=s["invoices"], items=s["items"], rows=s["rows"], value=s["value"],
                    batch_rows=sum(1 for r in res["rows"] if r["kind"] == "batch"),
                    first=invs[0], last=invs[-1], report=(res["report"] or {}).get("name", ""))
