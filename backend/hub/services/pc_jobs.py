@@ -2,6 +2,7 @@
 
   Pull from Tally   Tally answers only on the office PC (localhost:9000)
   Fetch GRIN        TAFE Channel answers Indian addresses / the browser runs only on the PC
+  DQMS report       only when the website itself cannot reach TAFE Channel
 
   website (Vercel)  -> INSERT a row in pc_jobs (status 'queued') and shows that row's log
   SDEW PC (start.bat with USE_CLOUD_DB=1 + TURSO_* of the primary database)
@@ -22,7 +23,7 @@ POLL = 4
 BEAT = 20
 ONLINE = 75       # PC counts as online if it said so within this many seconds
 STALE = 180       # a queued/running job not touched for this long -> given up
-KINDS = ("tally_pull", "grin_fetch")
+KINDS = ("tally_pull", "grin_fetch", "dqms_report")
 _on = False
 
 
@@ -106,6 +107,11 @@ def _push(job_id, st, final=False):
 
 def _run(job):
     p = json.loads(job["params"] or "{}")
+    if job["kind"] == "dqms_report":
+        from ..dqms.services import dqms_portal
+        mod, started = dqms_portal, dqms_portal.start()
+        _push(job["id"], dict(mod.STATUS), final=True)
+        return
     d1, d2 = date.fromisoformat(p["from"]), date.fromisoformat(p["to"])
     if job["kind"] == "tally_pull":
         from ..grin.services import tally

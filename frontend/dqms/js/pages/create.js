@@ -83,7 +83,8 @@ function renderReport() {
     if (_dqmsPoll) setDqmsBusy(true);
 }
 
-// "Get latest DQMS report": the PC app opens TAFE Channel in a hidden browser and downloads the report.
+// "Get latest DQMS report": logs in to TAFE Channel with plain web requests (no browser), on the PC and the website.
+// If the website cannot reach TAFE Channel, the SDEW PC does it and this page follows its progress.
 let _dqmsPoll = null;
 function setDqmsBusy(on, text) {
     const b = document.getElementById('btn-dqms-fetch');
@@ -91,25 +92,33 @@ function setDqmsBusy(on, text) {
     b.disabled = on;
     b.textContent = on ? (text || 'Getting DQMS report from TAFE Channel…') : '⟳ Get latest DQMS report from TAFE Channel';
 }
+async function dqmsFetchDone(s) {
+    clearInterval(_dqmsPoll); _dqmsPoll = null;
+    setDqmsBusy(false);
+    if (s.error) { showToast(`DQMS report not fetched: ${esc(s.error)}`, 'danger', 10000); return; }
+    const r = s.result || {};
+    showToast(`Latest DQMS report loaded from TAFE Channel — ${esc(String(r.batches ?? ''))} batches of ${esc(String(r.parts ?? ''))} parts.`, 'success', 6000);
+    if (typeof refreshBootstrap === 'function') await refreshBootstrap();
+    schedulePreview(0);
+}
 async function fetchDqms() {
+    setDqmsBusy(true);
+    let r;
     try {
-        await apiJson('/api/dqms/dqms/fetch', 'POST', {});
+        r = await apiJson('/api/dqms/dqms/fetch', 'POST', {});
     } catch (e) {
-        showToast(e.message, 'danger', 9000);
+        setDqmsBusy(false);
+        showToast(`DQMS report not fetched: ${esc(e.message)}`, 'danger', 10000);
         return;
     }
-    setDqmsBusy(true);
+    if (r.done) return dqmsFetchDone(r);
     clearInterval(_dqmsPoll);
-    _dqmsPoll = setInterval(async () => {
+    _dqmsPoll = setInterval(async () => {        // the SDEW PC is doing it
         let s;
         try { s = await api('/api/dqms/dqms/fetch'); } catch (e) { return; }
         const last = (s.log || []).slice(-1)[0] || '';
-        setDqmsBusy(true, last ? last.replace(/^\S+\s+/, '') + '…' : null);
-        if (s.running) return;
-        clearInterval(_dqmsPoll); _dqmsPoll = null;
-        setDqmsBusy(false);
-        if (s.error) showToast(`DQMS report not fetched: ${esc(s.error)}`, 'danger', 10000);
-        else { showToast(`Latest DQMS report loaded from TAFE Channel — ${esc(String(s.result?.batches ?? ''))} batches.`, 'success', 6000); schedulePreview(0); }
+        setDqmsBusy(true, last ? last.replace(/^\S+\s+/, '') : null);
+        if (!s.running) dqmsFetchDone(s);
     }, 2000);
 }
 

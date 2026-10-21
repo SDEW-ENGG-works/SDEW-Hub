@@ -45,19 +45,35 @@ def delete_invoice(req):
     return store.remove_invoice(str(req.json.get("inv_no", "")))
 
 
-# ---- "Get DQMS report" button: fetch it from TAFE Channel with Playwright (PC only) ----
+# ---- "Get DQMS report" button: TAFE Channel with plain web requests (no browser) - works on the PC and the website.
+# If the website cannot reach TAFE Channel (it answers Indian addresses only), the SDEW PC does it (pc_jobs).
 @route("GET", r"/api/dqms/fetch")
 def dqms_fetch_status(req):
+    from ... import config
+    from ...services import pc_jobs
     from ..services import dqms_portal
-    return dict(dqms_portal.STATUS, available=dqms_portal.available(), why_not=dqms_portal.why_not())
+    st = dict(dqms_portal.STATUS)
+    if config.ON_VERCEL:
+        j = pc_jobs.status("dqms_report")
+        if j.get("running") or (j.get("started") or "") > (st.get("started") or ""):
+            st = j
+    return dict(st, available=dqms_portal.available(), why_not=dqms_portal.why_not())
 
 
 @route("POST", r"/api/dqms/fetch")
 def dqms_fetch_start(req):
+    from ... import config
+    from ...services import pc_jobs
     from ..services import dqms_portal
     problem = dqms_portal.why_not()
     if problem:
         raise ApiError(problem)
-    if not dqms_portal.start(headed=bool(req.json.get("headed"))):
-        raise ApiError("Already fetching - wait for it to finish.")
-    return dict(dqms_portal.STATUS)
+    dqms_portal.start()
+    st = dict(dqms_portal.STATUS)
+    if st["error"] and config.ON_VERCEL and dqms_portal.network_problem(st["error"]):
+        a = pc_jobs.agent_info()
+        if a and a["online"]:
+            q = pc_jobs.queue("dqms_report", {})
+            q["log"] = st["log"] + ["TAFE Channel did not answer this website - asking the SDEW PC instead"] + q["log"]
+            return dict(q, queued=True, done=False)
+    return dict(st, done=True)
