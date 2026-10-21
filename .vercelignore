@@ -1,0 +1,6 @@
+# Not part of the website
+_old_skeleton_19Oct/
+data/
+tools/
+*.bat
+.env

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["bom1"],
+  "services": {
+    "app": {
+      "root": ".",
+      "runtime": "python",
+      "entrypoint": "vercel_app.py"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": { "service": "app" }
+    }
+  ]
+}
