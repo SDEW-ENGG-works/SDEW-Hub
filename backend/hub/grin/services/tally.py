@@ -106,6 +106,8 @@ def decode(raw):
 
 
 _BAD_REF = re.compile(r"&#(x[0-9a-fA-F]+|\d+);")
+_PREFIXED_TAG = re.compile(r"<(/?)([A-Za-z_][\w.\-]*):")
+_PREFIXED_ATTR = re.compile(r"(\s)([A-Za-z_][\w.\-]*):([A-Za-z_][\w.\-]*)=")
 _BAD_CHR = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
@@ -117,7 +119,11 @@ def clean_xml(text):
         return m.group(0) if n in (9, 10, 13) or n >= 32 else ""
     text = _BAD_REF.sub(ok, text)
     text = _BAD_CHR.sub("", text)
-    return text.lstrip("﻿").strip()
+    # Tally writes user-defined fields as <UDF:NAME ...> often WITHOUT declaring the UDF namespace
+    # ("unbound prefix" for every XML reader). We never read those fields: turn the prefix into a plain name.
+    text = _PREFIXED_TAG.sub(lambda m: f"<{m.group(1)}{m.group(2)}_", text)
+    text = _PREFIXED_ATTR.sub(lambda m: f"{m.group(1)}{m.group(2)}_{m.group(3)}=", text)
+    return text.lstrip("\ufeff").strip()
 
 
 def tally_error(text):

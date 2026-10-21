@@ -2,7 +2,7 @@
 
 For every invoice item:
     INVOICE_LR_DTLS row   DR, Order, PO line item, part, reason for gap, invoice no/date,
-                          invoice unit (= qty / Unit Size printed on the invoice, else the DR PDF's; No of Packeges when neither), final value, CGST/SGST/IGST, transporter
+                          invoice unit (= the bins typed as 'Unit Size' on the invoice; checked against qty / DR bin size), final value, CGST/SGST/IGST, transporter
     BATCH_DTLS row(s)     batch no + qty to consume, taken from the DQMS report: oldest batch
                           with balance first; when one batch is not enough the rest comes from
                           the next batch (one BATCH_DTLS row per batch). Batches used by an
@@ -152,21 +152,31 @@ def build(selected, edits_in=None):
             if (inv["total"] or 0) > 50000 and not re.fullmatch(r"\d{12}", eway):
                 problems.append("Value above 50,000 - the portal needs the 12-digit E-way Bill No. - type it" if not eway
                                 else f"E-way Bill No. {eway} must be 12 digits")
-            # Invoice Unit = invoice qty / Unit Size (bins as TAFE counts them). The Unit Size printed on the
-            # invoice comes first; a loaded DR PDF is used when the invoice has none, and to cross-check.
+            # Invoice Unit = number of bins (DR "Request Units"). SDEW types it on the invoice as "Unit Size : n"
+            # under Terms of Delivery, so it is used as it is. A loaded DR PDF cross-checks it: qty / DR bin size.
             unit, unit_src, drrow = unit0, ("typed" if unit_typed else "packages"), drmap.get((dr, it["part"]))
             qty_ = float(it.get("qty") or 0)
-            size, size_src = (inv_size, "invoice") if inv_size else ((drrow["size"], "DR") if drrow and drrow["size"] else (None, ""))
-            if size and not unit_typed:
-                n = qty_ / size
-                if abs(n - round(n)) < 1e-6:
-                    unit, unit_src = int(round(n)), size_src
-                else:
-                    problems.append(f"Qty {fmt(qty_)} is not a whole number of bins of {fmt(size)} "
-                                    f"({'Unit Size on the invoice' if size_src == 'invoice' else 'DR ' + dr}) - type the Invoice Unit")
-            if inv_size and drrow and drrow["size"] and abs(inv_size - drrow["size"]) > 1e-6:
-                problems.append(f"Unit Size on the invoice is {fmt(inv_size)} but DR {dr} says {fmt(drrow['size'])} - "
-                                "correct the invoice or type the Invoice Unit")
+            dr_bins = None
+            if drrow and drrow["size"]:
+                n = qty_ / drrow["size"]
+                dr_bins = int(round(n)) if abs(n - round(n)) < 1e-6 else None
+            if not unit_typed:
+                if inv_size:
+                    if abs(inv_size - round(inv_size)) < 1e-6:
+                        unit, unit_src = int(round(inv_size)), "invoice"
+                    else:
+                        problems.append(f"Unit Size {fmt(inv_size)} on the invoice is not a whole number of bins - type the Invoice Unit")
+                elif drrow and drrow["size"]:
+                    if dr_bins is not None:
+                        unit, unit_src = dr_bins, "DR"
+                    else:
+                        problems.append(f"Qty {fmt(qty_)} is not a whole number of bins of {fmt(drrow['size'])} (DR {dr}) - type the Invoice Unit")
+            if inv_size and drrow and drrow["size"] and not unit_typed:
+                if dr_bins is None:
+                    problems.append(f"Qty {fmt(qty_)} is not a whole number of DR {dr} bins of {fmt(drrow['size'])} - check the invoice")
+                elif abs(inv_size - dr_bins) > 1e-6:
+                    problems.append(f"Unit Size on the invoice is {fmt(inv_size)} bin(s), but qty {fmt(qty_)} / DR bin size "
+                                    f"{fmt(drrow['size'])} = {dr_bins} bin(s) - correct the invoice or type the Invoice Unit")
             if drrow:
                 notes.append(f"DR {dr}: {drrow['req']} x {fmt(drrow['size'])} = {fmt(drrow['qty'])} in {drrow['bin']}")
                 if abs(qty_ - drrow["qty"]) > 1e-6 and not reason:
