@@ -96,13 +96,22 @@ function pollTally() {
 }
 
 async function grinFetch() {
+    document.getElementById('btn-grin').disabled = true;
+    showToast('Fetching GRIN from TAFE Channel…', 'info');
     try {
-        await apiJson('/api/supp/grin/sync', 'POST', {
+        const r = await apiJson('/api/supp/grin/sync', 'POST', {
             from: document.getElementById('grin-from').value, to: document.getElementById('grin-to').value,
             headed: document.getElementById('grin-headed').checked });
-        showToast('Fetching GRIN from TAFE Channel…', 'info');
+        if (r.done) {           // website: the fetch already ran inside the request
+            showGrin(Object.assign({ available: true }, r));
+            showToast(r.error ? esc(r.error) : 'GRIN fetched', r.error ? 'danger' : 'success', 9000);
+            loadSources();
+            loadStatus(0);
+            return;
+        }
         pollGrin();
     } catch (e) {
+        document.getElementById('btn-grin').disabled = false;
         showToast(e.message, 'danger', 8000);
     }
 }

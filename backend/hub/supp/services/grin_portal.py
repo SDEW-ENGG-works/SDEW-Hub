@@ -40,7 +40,10 @@ def months(start, end):
         d = nxt
 
 
-def available():
+def browser_available():
+    """Playwright + Chromium on this PC. Never on Vercel (too big for a function)."""
+    if config.ON_VERCEL:
+        return False
     try:
         import playwright  # noqa: F401
         return True
@@ -48,13 +51,63 @@ def available():
         return False
 
 
+def available():
+    """Fetch GRIN always works: with the browser on the PC, without it (plain web requests) elsewhere."""
+    return True
+
+
+def method():
+    m = (config.read_env().get("GRIN_FETCH") or os.environ.get("GRIN_FETCH") or "auto").lower()
+    if m == "http" or not browser_available():
+        return "http"
+    return "browser"
+
+
 def start(d1, d2, headed=False):
+    """Starts the fetch. On Vercel it runs to the end inside this request (a function cannot keep a thread
+    running after it answered) - STATUS then already holds the result."""
     with _lock:
         if STATUS["running"]:
             return False
         STATUS.update(running=True, log=[], started=datetime.now().isoformat(timespec="seconds"), finished="", error="")
-    threading.Thread(target=_run, args=(d1, d2, headed), daemon=True).start()
+    target = _run if method() == "browser" else _run_http
+    if config.ON_VERCEL:
+        target(d1, d2, headed)
+    else:
+        threading.Thread(target=target, args=(d1, d2, headed), daemon=True).start()
     return True
+
+
+def _run_http(d1, d2, headed=False):
+    from .grin_http import PortalError, fetch_month, login
+    from .ingest import ingest_grin_file
+    try:
+        _log("Logging in to TAFE Channel (no browser)")
+        s = login(config.read_env())
+        out_dir = os.path.join(config.DATA_DIR, "grin_downloads")
+        os.makedirs(out_dir, exist_ok=True)
+        for a, b in months(d1, d2):
+            got = fetch_month(s, a, b)
+            if not got:
+                _log(f"{a:%d/%m/%Y} - {b:%d/%m/%Y}: no GRIN rows")
+                continue
+            name, data = got
+            path = os.path.join(out_dir, f"{name[:-4]}_{datetime.now():%H%M%S}.xls")
+            with open(path, "wb") as fh:
+                fh.write(data)
+            res = ingest_grin_file(path, os.path.basename(path), source="Portal")
+            _log(f"{a:%d/%m/%Y} - {b:%d/%m/%Y}: {res['lines']} lines ({res['added']} new)")
+        _log("Done")
+    except PortalError as e:
+        STATUS["error"] = str(e)
+        _log(f"Stopped: {e}")
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        STATUS["error"] = str(e)
+        _log(f"Stopped: {e}")
+    finally:
+        STATUS["running"] = False
+        STATUS["finished"] = datetime.now().isoformat(timespec="seconds")
 
 
 def _run(d1, d2, headed):

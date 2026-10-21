@@ -12,7 +12,8 @@ def summary(req):
         SUM(accepted_qty IS NULL OR (accepted_qty=0 AND rejected_qty=0)) open_lots
         FROM grin_lines GROUP BY 1 ORDER BY 1 DESC""")
     plants = rows("SELECT plant, COUNT(*) lines FROM grin_lines GROUP BY plant ORDER BY lines DESC")
-    return dict(months=months, plants=plants, portal=dict(available=grin_portal.available(), **grin_portal.STATUS))
+    return dict(months=months, plants=plants, portal=dict(available=grin_portal.available(),
+                                                         method=grin_portal.method(), **grin_portal.STATUS))
 
 
 @route("GET", r"/api/grin/search")
@@ -24,9 +25,6 @@ def search(req):
 
 @route("POST", r"/api/grin/sync")
 def sync(req):
-    if not grin_portal.available():
-        raise ApiError("Playwright is not installed on this PC. Run:  pip install playwright  then  "
-                       "python -m playwright install chromium")
     body = req.json
     try:
         d2 = date.fromisoformat(body.get("to") or date.today().isoformat())
@@ -37,7 +35,8 @@ def sync(req):
         raise ApiError("From date is after To date")
     if not grin_portal.start(d1, d2, headed=bool(body.get("headed"))):
         raise ApiError("A GRIN sync is already running")
-    return dict(started=True)
+    st = grin_portal.STATUS
+    return dict(started=True, done=not st["running"], **st)
 
 
 @route("GET", r"/api/grin/sync")

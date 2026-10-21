@@ -47,11 +47,23 @@ async function startSync() {
         to: document.getElementById('sync-to').value,
         headed: document.getElementById('sync-headed').checked,
     };
+    const btn = document.getElementById('btn-sync');
+    btn.disabled = true;
+    showToast('Fetching GRIN from TAFE Channel…', 'info');
     try {
-        await apiJson('/api/supp/grin/sync', 'POST', body);
-        showToast('Fetching GRIN from TAFE Channel…', 'info');
+        const r = await apiJson('/api/supp/grin/sync', 'POST', body);
+        if (r.done) {           // website: the fetch already ran inside the request
+            r.available = true;
+            showSyncStatus(r);
+            await refreshBootstrap();
+            renderUploadStats();
+            loadGrin();
+            showToast(r.error ? `GRIN fetch stopped: ${esc(r.error)}` : 'GRIN fetched. Press Calculate bill to update the bill.', r.error ? 'danger' : 'success', 9000);
+            return;
+        }
         pollSync();
     } catch (e) {
+        btn.disabled = false;
         showToast(e.message, 'danger', 7000);
     }
 }
