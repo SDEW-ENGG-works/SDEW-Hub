@@ -45,8 +45,8 @@ def app(environ, start_response):
         body = environ["wsgi.input"].read(length) if length else b""
         resp = dispatch(Request(method, path + ("?" + query if query else ""), body))
         try:  # Turso: send any writes still queued
-            from .db import get_db
-            get_db().commit()
+            from .db import commit_all
+            commit_all()
         except Exception:  # noqa: BLE001
             pass
         headers = [("Content-Type", resp.content_type), ("Content-Length", str(len(resp.body))),

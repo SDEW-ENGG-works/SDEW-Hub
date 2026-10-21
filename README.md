@@ -109,3 +109,11 @@ Invoice detail (click a row): parts, GRIN lines, payment lines, mails, a note an
 Today page: *Paid by TAFE* step, a GRIN & Payments card and two checks (not GRINed / payment overdue).
 
 Code: `backend/hub/grin/` (services: tally, payments, status, mailer, ingest), `frontend/grin/`. Tables `gp_*`.
+
+## Website databases (cloud mode, 21-Oct-2026)
+On Vercel (or the PC with `USE_CLOUD_DB=1`) the **CHEP** and **DQMS** pages read their old websites' own Turso
+databases when `CHEP_TURSO_DATABASE_URL` / `CHEP_TURSO_AUTH_TOKEN` and `DQMS_TURSO_DATABASE_URL` / `DQMS_TURSO_AUTH_TOKEN`
+are set — the live data, old table names (`runs`) and settings keys (`app`) translated in `db.module_db()`.
+Supplementary Bill, GRIN & Payments and the Today page use the hub's own database (`TURSO_DATABASE_URL` /
+`TURSO_AUTH_TOKEN`); without it they show "This website has no database set". On the PC without `USE_CLOUD_DB=1`
+everything stays in `data\sdew_hub.db` as before.

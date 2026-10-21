@@ -143,8 +143,15 @@ MIGRATIONS = [
 ]
 
 
+NOT_SET_ON_VERCEL = ("This website has no database set: add TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in "
+                     "Vercel > Settings > Environment Variables and redeploy.")
+
+
 def _connect():
     cloud = config.cloud_db()
+    if config.ON_VERCEL and not cloud:
+        # never fall back to an empty /tmp database on Vercel - it looks like all data is gone
+        raise DatabaseUnavailable(NOT_SET_ON_VERCEL)
     if cloud:
         from .turso import Connection
         return Connection(*cloud)
@@ -153,6 +160,90 @@ def _connect():
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
     return con
+
+
+# ---------------------------------------------------------------- per-module databases (CHEP / DQMS)
+# In cloud mode the CHEP and DQMS pages read their old websites' Turso databases directly (see
+# config.module_cloud_db). Those databases have the old table names: runs (not chep_runs / dqms_runs).
+MODULE_RENAMES = {"chep": {"chep_runs": "runs"}, "dqms": {"dqms_runs": "runs"}}
+# columns the old apps added over time (same list as their own db.py)
+MODULE_MIGRATIONS = {"chep": [("batches", "data", "BLOB"), ("runs", "leap_status", "TEXT"),
+                              ("runs", "leap_result", "TEXT"), ("runs", "leap_at", "TEXT")],
+                     "dqms": [("invoices", "eway", "TEXT")]}
+_mod_ready = set()
+
+
+class ModuleConnection:
+    """A module's own database, with the hub's table names turned back into the old app's names."""
+
+    def __init__(self, con, renames):
+        import re
+        self.con = con
+        self._subs = [(re.compile(rf"\b{a}\b"), b) for a, b in renames.items()]
+
+    def _sql(self, sql):
+        for rx, b in self._subs:
+            sql = rx.sub(b, sql)
+        return sql
+
+    def execute(self, sql, args=()):
+        return self.con.execute(self._sql(sql), args)
+
+    def executemany(self, sql, seq):
+        return self.con.executemany(self._sql(sql), seq)
+
+    def executescript(self, script):
+        return self.con.executescript(self._sql(script))
+
+    def commit(self):
+        return self.con.commit()
+
+    def close(self):
+        return self.con.close()
+
+
+def module_db(module):
+    """The database a module's code works on: its own Turso database in cloud mode, else the hub's."""
+    cloud = config.module_cloud_db(module)
+    if not cloud:
+        return get_db()
+    key = f"mod_{module}"
+    con = getattr(_local, key, None)
+    if con is None:
+        try:
+            from .turso import Connection
+            con = ModuleConnection(Connection(*cloud), MODULE_RENAMES.get(module, {}))
+        except Exception as e:  # noqa: BLE001
+            raise DatabaseUnavailable(str(e))
+        setattr(_local, key, con)
+    if module not in _mod_ready:
+        with _init_lock:
+            if module not in _mod_ready:
+                try:
+                    for table, col, typ in MODULE_MIGRATIONS.get(module, []):
+                        cols = [r[1] for r in con.con.execute(f"PRAGMA table_info({table})").fetchall()]
+                        if cols and col not in cols:
+                            try:
+                                con.con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+                                con.commit()
+                            except Exception as e:  # noqa: BLE001
+                                if "duplicate column" not in str(e).lower():
+                                    raise
+                except Exception as e:  # noqa: BLE001
+                    raise DatabaseUnavailable(str(e))
+                _mod_ready.add(module)
+    return con
+
+
+def commit_all():
+    """Send queued Turso writes of the hub and module databases (called after every request)."""
+    for key in ("con", "mod_chep", "mod_dqms"):
+        con = getattr(_local, key, None)
+        if con is not None:
+            try:
+                con.commit()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def migrate(con):

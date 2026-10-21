@@ -35,7 +35,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         resp = dispatch(Request(self.command, self.path, body))
         if config.db_mode() == "cloud":
             try:  # Turso: send any writes still queued
-                get_db().commit()
+                from .db import commit_all
+                commit_all()
             except Exception:  # noqa: BLE001
                 pass
         self.send_response(resp.status)

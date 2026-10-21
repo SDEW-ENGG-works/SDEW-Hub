@@ -101,6 +101,9 @@ def dispatch(request):
             return Response.error(e.message, e.status)
         except DatabaseUnavailable as e:
             print(f"Database unavailable: {e}")
+            from .db import NOT_SET_ON_VERCEL
+            if str(e) == NOT_SET_ON_VERCEL:
+                return Response.error(NOT_SET_ON_VERCEL, 503)
             return Response.error("The database is not reachable right now. Please try again in a moment.", 503)
         except Exception as e:  # never leak a stack trace to the browser
             traceback.print_exc()

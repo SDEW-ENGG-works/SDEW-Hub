@@ -26,7 +26,8 @@ def upload_dir(module):
 
 ENV_KEYS = ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "APP_PASSWORD", "LEAP_USER", "LEAP_PASS",
             "TAFE_USER", "TAFE_PASS", "TAFE_URL", "USE_CLOUD_DB", "HUB_PORT",
-            "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_FROM", "SMTP_SSL")
+            "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_FROM", "SMTP_SSL",
+            "CHEP_TURSO_DATABASE_URL", "CHEP_TURSO_AUTH_TOKEN", "DQMS_TURSO_DATABASE_URL", "DQMS_TURSO_AUTH_TOKEN")
 
 
 def read_env():
@@ -63,5 +64,25 @@ def cloud_db():
     return None
 
 
+def cloud_mode():
+    """True on Vercel, or on the PC with USE_CLOUD_DB=1 in .env."""
+    if ON_VERCEL:
+        return True
+    return str(read_env().get("USE_CLOUD_DB", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def module_cloud_db(module):
+    """(url, token) of the CHEP / DQMS module's OWN Turso database - the databases of the old CHEP and DQMS
+    websites, where their live data is - when the hub runs in cloud mode and
+    CHEP_TURSO_DATABASE_URL / CHEP_TURSO_AUTH_TOKEN (or DQMS_...) are set. Otherwise None (hub database).
+    On the PC without USE_CLOUD_DB=1 the .env copies of these keys are only used by tools/import_from_apps.py."""
+    if module not in ("chep", "dqms") or not cloud_mode():
+        return None
+    env = read_env()
+    p = module.upper()
+    url, token = env.get(f"{p}_TURSO_DATABASE_URL"), env.get(f"{p}_TURSO_AUTH_TOKEN")
+    return (url, token) if url and token else None
+
+
 def db_mode():
-    return "cloud" if cloud_db() else "local"
+    return "cloud" if cloud_db() or module_cloud_db("chep") or module_cloud_db("dqms") else "local"
