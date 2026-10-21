@@ -5,6 +5,9 @@ from .. import route
 from ..db import rows
 from ...http import ApiError
 from ..services import status as st
+from ..services import status as st_
+from ... import config
+from ...services import pc_jobs
 from ..services import tally
 from ..services.defaults import load_settings, plants
 from ..services.ingest import ingest
@@ -34,12 +37,13 @@ def sources(req):
         tally=dict(url=s["tally_url"], companies=s["tally_companies"],
                    **_one("SELECT COUNT(*) n, MIN(inv_date) first, MAX(inv_date) last, MAX(pulled_at) pulled "
                           "FROM gp_tally_invoices"),
-                   status=tally.STATUS),
+                   status=pc_jobs.status("tally_pull") if config.ON_VERCEL else tally.STATUS,
+                   on_pc=config.ON_VERCEL, agent=pc_jobs.agent_info()),
         sales=_one(f"SELECT COUNT(DISTINCT voucher) n, MIN(inv_date) first, MAX(inv_date) last FROM sales_lines "
                    f"WHERE party IN ({ph})", parties),
         grin=dict(**_one("SELECT COUNT(DISTINCT grin_no) n, COUNT(DISTINCT invoice_no) invoices, MIN(grin_date) first, "
                          "MAX(grin_date) last, MAX(updated_at) updated FROM grin_lines"),
-                  portal=dict(available=grin_portal.available(), **grin_portal.STATUS)),
+                  portal=_grin_portal(grin_portal)),
         payments=_one("SELECT COUNT(*) n, COUNT(DISTINCT pv) vouchers, MIN(pv_date) first, MAX(pv_date) last "
                       "FROM gp_pay_lines"),
         register=_one("SELECT COUNT(*) n, SUM(pv<>'') marked, MAX(inv_date) last, MAX(file) file, MAX(loaded_at) loaded "
@@ -49,8 +53,22 @@ def sources(req):
         dates=st.data_dates())
 
 
+def _grin_portal(grin_portal):
+    if config.ON_VERCEL:
+        a = pc_jobs.agent_info()
+        return dict(pc_jobs.status("grin_fetch"), method="pc" if a and a["online"] else "http")
+    return dict(available=grin_portal.available(), method=grin_portal.method(), **grin_portal.STATUS)
+
+
 @route("POST", r"/api/tally/test")
 def tally_test(req):
+    if config.ON_VERCEL:
+        a = pc_jobs.agent_info()
+        if a and a["online"]:
+            raise ApiError(f"Tally is reached through the SDEW PC ({a['host']}, online). Press Pull from Tally - "
+                           "the PC does it. To test the connection itself, use the hub on that PC.")
+        raise ApiError("Tally is on the office PC and the SDEW PC is not connected right now - start the hub there "
+                       "(start.bat with USE_CLOUD_DB=1).")
     url = (req.json.get("url") or load_settings()["tally_url"]).strip()
     try:
         names = tally.list_companies(url)
@@ -72,6 +90,11 @@ def tally_pull(req):
     if d1 > d2:
         raise ApiError("From date is after To date")
     comps = b.get("companies") if b.get("companies") is not None else s["tally_companies"]
+    if config.ON_VERCEL:      # Tally is on the office PC - hand the pull to it
+        try:
+            return dict(pc_jobs.queue("tally_pull", {"from": d1.isoformat(), "to": d2.isoformat()}), queued=True, done=False)
+        except RuntimeError as e:
+            raise ApiError(str(e))
     if not tally.start(s["tally_url"], comps, d1, d2, {p["party"] for p in plants()}):
         raise ApiError("A Tally pull is already running")
     st.invalidate()
@@ -80,6 +103,11 @@ def tally_pull(req):
 
 @route("GET", r"/api/tally/pull")
 def tally_status(req):
+    if config.ON_VERCEL:
+        st = pc_jobs.status("tally_pull")
+        if not st["running"]:
+            st_.invalidate()
+        return st
     if not tally.STATUS["running"]:
         st.invalidate()
     return tally.STATUS

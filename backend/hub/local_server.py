@@ -140,6 +140,11 @@ def run_server(port=None):
         pass
     first_import()
     get_db()
+    try:  # Pull from Tally / Fetch GRIN pressed on the website are done by this PC
+        from .services.pc_jobs import start_agent as start_pc_jobs
+        start_pc_jobs()
+    except Exception as e:  # noqa: BLE001
+        print("[PC jobs] not started:", e)
     try:  # CHEP: jobs sent from the website reach this PC through the shared cloud database
         from .chep.services.leap_remote import start_agent
         start_agent()

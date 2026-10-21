@@ -74,7 +74,7 @@ def data_dates():
 def build(as_of=None):
     as_of = as_of or date.today().isoformat()
     key = as_of
-    if _cache["key"] == key and time.time() - _cache["at"] < 20:
+    if _cache["key"] == key and time.time() - _cache["at"] < 120:
         return _cache["data"]
     data = _build(as_of)
     _cache.update(key=key, at=time.time(), data=data)

@@ -125,6 +125,11 @@ CREATE INDEX IF NOT EXISTS ix_gp_mail_inv ON gp_mail_invoices(inv_key);
 CREATE TABLE IF NOT EXISTS gp_notes(
     inv_key TEXT PRIMARY KEY, note TEXT, hold INTEGER DEFAULT 0, updated_at TEXT);
 
+-- ---------- Jobs the website hands to the SDEW PC (Tally pull, Fetch GRIN) ----------
+CREATE TABLE IF NOT EXISTS pc_jobs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, params TEXT, status TEXT, log TEXT, error TEXT,
+    result TEXT, created_at TEXT, started_at TEXT, finished_at TEXT, host TEXT, updated_ts REAL);
+
 -- ---------- Hub ----------
 CREATE TABLE IF NOT EXISTS open_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, module TEXT, title TEXT, detail TEXT,

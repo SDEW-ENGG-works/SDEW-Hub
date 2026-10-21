@@ -2,6 +2,8 @@ from datetime import date, timedelta
 
 from ..db import rows
 from ..http import ApiError, route
+from ... import config
+from ...services import pc_jobs
 from ..services import grin_portal
 
 
@@ -12,8 +14,12 @@ def summary(req):
         SUM(accepted_qty IS NULL OR (accepted_qty=0 AND rejected_qty=0)) open_lots
         FROM grin_lines GROUP BY 1 ORDER BY 1 DESC""")
     plants = rows("SELECT plant, COUNT(*) lines FROM grin_lines GROUP BY plant ORDER BY lines DESC")
-    return dict(months=months, plants=plants, portal=dict(available=grin_portal.available(),
-                                                         method=grin_portal.method(), **grin_portal.STATUS))
+    if config.ON_VERCEL:
+        a = pc_jobs.agent_info()
+        portal = dict(pc_jobs.status("grin_fetch"), method="pc" if a and a["online"] else "http")
+    else:
+        portal = dict(available=grin_portal.available(), method=grin_portal.method(), **grin_portal.STATUS)
+    return dict(months=months, plants=plants, portal=portal)
 
 
 @route("GET", r"/api/grin/search")
@@ -33,6 +39,13 @@ def sync(req):
         raise ApiError("Dates must be yyyy-mm-dd")
     if d1 > d2:
         raise ApiError("From date is after To date")
+    if config.ON_VERCEL:
+        a = pc_jobs.agent_info()
+        if a and a["online"]:      # the SDEW PC fetches it (browser, Indian address) into the shared database
+            try:
+                return dict(pc_jobs.queue("grin_fetch", {"from": d1.isoformat(), "to": d2.isoformat()}), queued=True, done=False)
+            except RuntimeError as e:
+                raise ApiError(str(e))
     if not grin_portal.start(d1, d2, headed=bool(body.get("headed"))):
         raise ApiError("A GRIN sync is already running")
     st = grin_portal.STATUS
@@ -41,4 +54,6 @@ def sync(req):
 
 @route("GET", r"/api/grin/sync")
 def sync_status(req):
+    if config.ON_VERCEL:
+        return pc_jobs.status("grin_fetch")
     return grin_portal.STATUS

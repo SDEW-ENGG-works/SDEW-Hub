@@ -96,17 +96,43 @@ class Connection:
         self.timeout = timeout
         self._queue = []      # (cursor, request) not sent yet
 
+    def _http(self):
+        """One kept-open HTTPS connection per Connection: the TLS handshake (3 extra trips to the
+        database's region) is paid once, not on every query."""
+        import http.client
+        import urllib.parse
+        if getattr(self, "_conn", None) is None:
+            u = urllib.parse.urlsplit(self.endpoint)
+            cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
+            self._conn = cls(u.hostname, u.port, timeout=self.timeout)
+            self._path = u.path
+        return self._conn
+
     def _post(self, requests):
+        import http.client
         body = json.dumps({"requests": requests + [{"type": "close"}]}).encode("utf-8")
-        req = urllib.request.Request(self.endpoint, data=body, method="POST", headers={
-            "Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            raise TursoError(f"Turso HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
-        except urllib.error.URLError as e:
-            raise TursoError(f"Turso not reachable: {e.reason}")
+        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json",
+                   "Connection": "keep-alive"}
+        for attempt in (1, 2):
+            try:
+                c = self._http()
+                c.request("POST", self._path, body=body, headers=headers)
+                resp = c.getresponse()
+                raw = resp.read()
+                if resp.status >= 400:
+                    raise TursoError(f"Turso HTTP {resp.status}: {raw.decode('utf-8', 'replace')[:300]}")
+                data = json.loads(raw.decode("utf-8"))
+                break
+            except TursoError:
+                raise
+            except (http.client.HTTPException, OSError) as e:   # server closed the kept-open connection
+                try:
+                    self._conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._conn = None
+                if attempt == 2:
+                    raise TursoError(f"Turso not reachable: {e}")
         return data["results"][:len(requests)]
 
     def _flush(self):

@@ -10,13 +10,15 @@ async function loadSources() {
             <dt>Tally server</dt><dd>${esc(t.url)}</dd>
             <dt>Companies</dt><dd>${t.companies.length ? esc(t.companies.map(c => c.name + (c.location ? ` (${c.location})` : '')).join(', ')) : 'the company open in Tally'}</dd>
             <dt>Pulled from Tally</dt><dd>${t.n ? `${inr(t.n, 0)} invoices, ${dmy(t.first)} to ${dmy(t.last)} · ${esc(when(t.pulled))}` : 'not yet'}</dd>
-            <dt>Sales Register upload</dt><dd>${s.sales.n ? `${inr(s.sales.n, 0)} TAFE invoices, ${dmy(s.sales.first)} to ${dmy(s.sales.last)}` : 'none'}</dd>`;
+            <dt>Sales Register upload</dt><dd>${s.sales.n ? `${inr(s.sales.n, 0)} TAFE invoices, ${dmy(s.sales.first)} to ${dmy(s.sales.last)}` : 'none'}</dd>
+            ${t.on_pc ? `<dt>Done by</dt><dd>${pcAgent(t.agent)}</dd>` : ''}`;
         showTally(t.status);
         const g = s.grin;
         document.getElementById('grin-kv').innerHTML = `
             <dt>GRIN loaded</dt><dd>${g.n ? `${inr(g.n, 0)} GRINs for ${inr(g.invoices, 0)} invoices` : 'none'}</dd>
             <dt>GRIN dates</dt><dd>${g.first ? `${dmy(g.first)} to <b>${dmy(g.last)}</b>` : '—'}</dd>
-            <dt>Last fetched</dt><dd>${esc(when(g.updated)) || '—'}</dd>`;
+            <dt>Last fetched</dt><dd>${esc(when(g.updated)) || '—'}</dd>
+            ${g.portal.remote ? `<dt>Done by</dt><dd>${g.portal.method === 'pc' ? pcAgent(g.portal.agent) : 'this website (no browser) - start the SDEW PC hub to let the PC do it'}</dd>` : ''}`;
         showGrin(g.portal);
         document.getElementById('pay-kv').innerHTML = `
             <dt>TAFE payment lines</dt><dd>${s.payments.n ? `${inr(s.payments.n, 0)} lines in ${s.payments.vouchers} vouchers, ${dmy(s.payments.first)} to <b>${dmy(s.payments.last)}</b>` : 'none — drop a PaymentDetailsExport'}</dd>
@@ -165,4 +167,10 @@ function initDropzone() {
     ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
     ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('over'); }));
     dz.addEventListener('drop', e => uploadFiles(e.dataTransfer.files));
+}
+
+function pcAgent(a) {
+    if (!a) return '<span class="status-badge warn">SDEW PC never connected</span> start the hub there with USE_CLOUD_DB=1';
+    return a.online ? `<span class="status-badge active">SDEW PC online</span> ${esc(a.host)}`
+        : `<span class="status-badge inactive">SDEW PC offline</span> last seen ${esc(when(a.at))} - start start.bat there`;
 }

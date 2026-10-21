@@ -76,8 +76,8 @@ def module_cloud_db(module):
     websites, where their live data is - when the hub runs in cloud mode and
     CHEP_TURSO_DATABASE_URL / CHEP_TURSO_AUTH_TOKEN (or DQMS_...) are set. Otherwise None (hub database).
     On the PC without USE_CLOUD_DB=1 the .env copies of these keys are only used by tools/import_from_apps.py."""
-    if module not in ("chep", "dqms") or not cloud_mode():
-        return None
+    if module not in ("chep", "dqms") or not cloud_mode() or cloud_db():
+        return None     # the hub's own (primary) database holds everything once TURSO_DATABASE_URL is set
     env = read_env()
     p = module.upper()
     url, token = env.get(f"{p}_TURSO_DATABASE_URL"), env.get(f"{p}_TURSO_AUTH_TOKEN")

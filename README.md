@@ -110,10 +110,18 @@ Today page: *Paid by TAFE* step, a GRIN & Payments card and two checks (not GRIN
 
 Code: `backend/hub/grin/` (services: tally, payments, status, mailer, ingest), `frontend/grin/`. Tables `gp_*`.
 
-## Website databases (cloud mode, 21-Oct-2026)
-On Vercel (or the PC with `USE_CLOUD_DB=1`) the **CHEP** and **DQMS** pages read their old websites' own Turso
-databases when `CHEP_TURSO_DATABASE_URL` / `CHEP_TURSO_AUTH_TOKEN` and `DQMS_TURSO_DATABASE_URL` / `DQMS_TURSO_AUTH_TOKEN`
-are set — the live data, old table names (`runs`) and settings keys (`app`) translated in `db.module_db()`.
-Supplementary Bill, GRIN & Payments and the Today page use the hub's own database (`TURSO_DATABASE_URL` /
-`TURSO_AUTH_TOKEN`); without it they show "This website has no database set". On the PC without `USE_CLOUD_DB=1`
-everything stays in `data\sdew_hub.db` as before.
+## One database for the PC and the website (21-Oct-2026)
+`TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` = the hub's **primary** database (Mumbai). Everything lives there:
+Supplementary Bill, CHEP, DQMS, GRIN & Payments, follow-ups.
+
+1. Create the Mumbai database, put its two keys in this PC's `.env` (keep the `CHEP_TURSO_*` / `DQMS_TURSO_*` lines).
+2. `python tools\build_primary_db.py --check` then `python tools\build_primary_db.py` - merges this PC's hub data with
+   the live CHEP and DQMS website databases (website rows win, PC-only rows added) and uploads it.
+3. Add `USE_CLOUD_DB=1` to `.env`, restart `start.bat`. Same two keys in Vercel > Environment Variables, redeploy.
+
+Without `TURSO_DATABASE_URL` the website falls back to reading the old CHEP / DQMS databases for those two pages.
+
+**Pull from Tally / Fetch GRIN on the website** are done by the SDEW PC: the website puts a job in `pc_jobs`, the hub
+on the PC (start.bat, `USE_CLOUD_DB=1`) picks it up within seconds, runs it and writes the log back
+(`backend/hub/services/pc_jobs.py`). The Get data tab shows whether the SDEW PC is online. If the PC is offline,
+Fetch GRIN on the website tries TAFE Channel directly (no browser, `supp/services/grin_http.py`).

@@ -232,11 +232,13 @@ def checks(dqms_sent=None, chep_invoices=None, report=None):
     grin_inv = {r["invoice_no"] for r in rows("SELECT DISTINCT invoice_no FROM grin_lines")}
     last_grin = (one("SELECT MAX(grin_date) d FROM grin_lines") or {}).get("d") or ""
     no_grin = []
+    # dates read once (one query each) - not one query per invoice: on the website every query is a trip to the database
+    inv_dates = {r["voucher"]: r["d"] for r in rows("SELECT voucher, MIN(inv_date) d FROM sales_lines GROUP BY voucher")}
+    inv_dates.update({r["inv_no"]: r["inv_date"] for r in rows("SELECT inv_no, inv_date FROM invoices") if r["inv_date"]})
     for inv in sorted(dqms_sent):
         if inv in grin_inv:
             continue
-        d = (one("SELECT inv_date FROM invoices WHERE inv_no=?", (inv,)) or one(
-            "SELECT inv_date FROM sales_lines WHERE voucher=? LIMIT 1", (inv,)) or {}).get("inv_date") or ""
+        d = inv_dates.get(inv) or ""
         if d and last_grin and d <= (datetime.fromisoformat(last_grin) - timedelta(days=3)).date().isoformat():
             no_grin.append(dict(ref=inv, date=d, detail="sent on DQMS, no GRIN in the GRIN data yet"))
     add("cross", "Sent on DQMS but no GRIN after 3 days", no_grin, "/supp/#grin",
