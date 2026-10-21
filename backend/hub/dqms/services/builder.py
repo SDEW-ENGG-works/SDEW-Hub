@@ -2,7 +2,7 @@
 
 For every invoice item:
     INVOICE_LR_DTLS row   DR, Order, PO line item, part, reason for gap, invoice no/date,
-                          invoice unit (= qty / DR Unit Size; No of Packeges when no DR PDF), final value, CGST/SGST/IGST, transporter
+                          invoice unit (= qty / Unit Size printed on the invoice, else the DR PDF's; No of Packeges when neither), final value, CGST/SGST/IGST, transporter
     BATCH_DTLS row(s)     batch no + qty to consume, taken from the DQMS report: oldest batch
                           with balance first; when one batch is not enough the rest comes from
                           the next batch (one BATCH_DTLS row per batch). Batches used by an
@@ -38,6 +38,16 @@ def dmy(iso):
 def inv_sort_key(no):
     m = re.match(r"(\d+)", no or "")
     return (no.split("/")[-1] if "/" in (no or "") else "", int(m.group(1)) if m else 0, no)
+
+
+def _one_digit_off(a, b):
+    """True when a and b differ by one digit missing, extra or changed (a Tally typing slip)."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    s, l = (a, b) if len(a) < len(b) else (b, a)
+    return any(l[:i] + l[i + 1:] == s for i in range(len(l)))
 
 
 def load_invoices(inv_nos=None):
@@ -97,6 +107,16 @@ def build(selected, edits_in=None):
             unit0 = ed.get("unit")
         else:
             unit0 = 1 if st.get("invoice_unit") == "one" else inv["packages"]
+        inv_size = inv.get("unit_size") or None
+        # Buyer's Order No. typed wrong in Tally (e.g. 103000676 for 1030000676): match it to a known PO
+        order, order_note = inv["order_no"], ""
+        if order and order not in plants and not any(k[0] == order for k in items_map):
+            near = sorted({po_no for po_no in plants if _one_digit_off(order, po_no)})
+            if len(near) == 1:
+                order_note = f"Buyer's Order No. on the invoice is {order} - taken as PO {near[0]}. Correct it in Tally."
+                order = near[0]
+            else:
+                order_note = f"Buyer's Order No. {order} is not a known PO - check it in Tally"
         reason = ed.get("reason") or ""
         remarks = ed.get("remarks") or ""
         eway = re.sub(r"\s", "", ed.get("eway") or inv.get("eway") or "")
@@ -107,7 +127,8 @@ def build(selected, edits_in=None):
             problems, notes = [], list(inv["warnings"])
             if multi:
                 notes.append(f"Invoice has {len(inv['items'])} parts - one invoice row per part, each with the full invoice value. Check before uploading.")
-            order = inv["order_no"]
+            if order_note:
+                notes.append(order_note)
             # PO line item
             line, line_src = None, ""
             if (order, it["part"]) in overrides:
@@ -129,24 +150,30 @@ def build(selected, edits_in=None):
             if (inv["total"] or 0) > 50000 and not re.fullmatch(r"\d{12}", eway):
                 problems.append("Value above 50,000 - the portal needs the 12-digit E-way Bill No. - type it" if not eway
                                 else f"E-way Bill No. {eway} must be 12 digits")
-            # Invoice Unit = invoice qty / the DR's Unit Size (bins as TAFE counts them)
+            # Invoice Unit = invoice qty / Unit Size (bins as TAFE counts them). The Unit Size printed on the
+            # invoice comes first; a loaded DR PDF is used when the invoice has none, and to cross-check.
             unit, unit_src, drrow = unit0, ("typed" if unit_typed else "packages"), drmap.get((dr, it["part"]))
             qty_ = float(it.get("qty") or 0)
-            if drrow and not unit_typed and drrow["size"]:
-                n = qty_ / drrow["size"]
+            size, size_src = (inv_size, "invoice") if inv_size else ((drrow["size"], "DR") if drrow and drrow["size"] else (None, ""))
+            if size and not unit_typed:
+                n = qty_ / size
                 if abs(n - round(n)) < 1e-6:
-                    unit, unit_src = int(round(n)), "DR"
+                    unit, unit_src = int(round(n)), size_src
                 else:
-                    problems.append(f"Qty {fmt(qty_)} is not a whole number of bins of {fmt(drrow['size'])} (DR {dr}) - type the Invoice Unit")
+                    problems.append(f"Qty {fmt(qty_)} is not a whole number of bins of {fmt(size)} "
+                                    f"({'Unit Size on the invoice' if size_src == 'invoice' else 'DR ' + dr}) - type the Invoice Unit")
+            if inv_size and drrow and drrow["size"] and abs(inv_size - drrow["size"]) > 1e-6:
+                problems.append(f"Unit Size on the invoice is {fmt(inv_size)} but DR {dr} says {fmt(drrow['size'])} - "
+                                "correct the invoice or type the Invoice Unit")
             if drrow:
                 notes.append(f"DR {dr}: {drrow['req']} x {fmt(drrow['size'])} = {fmt(drrow['qty'])} in {drrow['bin']}")
                 if abs(qty_ - drrow["qty"]) > 1e-6 and not reason:
                     problems.append(f"Invoice qty {fmt(qty_)} differs from the DR qty {fmt(drrow['qty'])} - choose a Reason for Gap "
                                     f"({'EXTRA PULL BY TAFE' if qty_ > drrow['qty'] else 'e.g. FG NOT AVAILABLE'})")
-            elif chosen and dr and not unit_typed:
-                notes.append(f"DR {dr} PDF not loaded - Invoice Unit taken from 'No of Packeges'; drop the DR PDF to check it")
+            elif chosen and dr and not unit_typed and not inv_size:
+                notes.append(f"No Unit Size on the invoice and DR {dr} PDF not loaded - Invoice Unit taken from 'No of Packeges'")
             if unit in (None, ""):
-                problems.append("Invoice Unit missing - type it or drop the DR PDF")
+                problems.append("Invoice Unit missing - type it, or add Unit Size on the invoice")
             # batches
             alloc, short, deferred = [], 0.0, False
             need = float(it.get("qty") or 0)

@@ -2,7 +2,7 @@
 
 let _tallyTimer = null, _grinTimer = null;
 
-async function loadSources() {
+async function loadSources(keepTallyLog) {
     try {
         const s = await api('/api/grin/sources');
         const t = s.tally;
@@ -11,8 +11,15 @@ async function loadSources() {
             <dt>Companies</dt><dd>${t.companies.length ? esc(t.companies.map(c => c.name + (c.location ? ` (${c.location})` : '')).join(', ')) : 'the company open in Tally'}</dd>
             <dt>Pulled from Tally</dt><dd>${t.n ? `${inr(t.n, 0)} invoices, ${dmy(t.first)} to ${dmy(t.last)} · ${esc(when(t.pulled))}` : 'not yet'}</dd>
             <dt>Sales Register upload</dt><dd>${s.sales.n ? `${inr(s.sales.n, 0)} TAFE invoices, ${dmy(s.sales.first)} to ${dmy(s.sales.last)}` : 'none'}</dd>
-            ${t.on_pc ? `<dt>Done by</dt><dd>${pcAgent(t.agent)}</dd>` : ''}`;
-        showTally(t.status);
+            `;
+        if (!keepTallyLog) showTally(t.status);
+        if (ON_SITE) bridgePing().then(p => {
+            const kv = document.getElementById('tally-kv');
+            kv.insertAdjacentHTML('beforeend', `<dt>This computer</dt><dd>${p
+                ? (p.tally_ok ? `<span class="status-badge active">Tally bridge on</span> ${esc(p.host)} - ${esc((p.companies || []).join(', ') || 'no company open')}`
+                    : `<span class="status-badge warn">Bridge on, Tally not answering</span> ${esc(p.host)}`)
+                : `<span class="status-badge inactive">Tally bridge off</span> <a href="${BRIDGE_DL}" download>download SDEW-Tally-Bridge.exe</a> and double-click it once`}</dd>`);
+        });
         const g = s.grin;
         document.getElementById('grin-kv').innerHTML = `
             <dt>GRIN loaded</dt><dd>${g.n ? `${inr(g.n, 0)} GRINs for ${inr(g.invoices, 0)} invoices` : 'none'}</dd>
@@ -61,7 +68,39 @@ function showGrin(st) {
     document.getElementById('btn-grin').disabled = !!st.running;
 }
 
+// ---------- Pull from Tally ----------
+// On the website the BROWSER asks this computer's Tally through the Tally bridge (tools/tally_bridge.py on
+// http://localhost:9001), so every computer pulls its own Tally. On the PC hub (localhost:8050) the server does it.
+const BRIDGE = 'http://localhost:9001';
+const ON_SITE = !['localhost', '127.0.0.1'].includes(location.hostname);
+const BRIDGE_DL = '/assets/SDEW-Tally-Bridge.exe';
+const BRIDGE_HELP = `Tally bridge is not running on this computer. <a href="${BRIDGE_DL}" download><b>Download SDEW-Tally-Bridge.exe</b></a>, ` +
+    'double-click it once (Windows may say "unknown publisher": More info > Run anyway). It then runs in the background and ' +
+    'starts with Windows. Press Pull from Tally again.';
+
+async function bridgePing() {
+    try {
+        const r = await fetch(`${BRIDGE}/ping`, { cache: 'no-store' });
+        return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+}
+
+async function gzipB64(text) {
+    if (typeof CompressionStream === 'undefined') return null;
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+    const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return btoa(bin);
+}
+
 async function tallyTest() {
+    if (ON_SITE) {
+        const p = await bridgePing();
+        if (!p) return showToast(BRIDGE_HELP, 'danger', 12000);
+        if (!p.tally_ok) return showToast(esc(p.error), 'danger', 12000);
+        return showToast(`Tally on <b>${esc(p.host)}</b> answered. Companies open: <b>${esc((p.companies || []).join(', ') || 'none')}</b>`, 'success', 8000);
+    }
     try {
         const r = await apiJson('/api/grin/tally/test', 'POST', {});
         showToast(`Tally answered. Companies open: <b>${esc(r.companies.join(', ') || 'none')}</b>`, 'success', 7000);
@@ -71,6 +110,53 @@ async function tallyTest() {
 }
 
 async function tallyPull() {
+    if (!ON_SITE) return tallyPullServer();
+    const btn = document.getElementById('btn-tally'), badge = document.getElementById('tally-badge');
+    const lines = [];
+    const log = t => { lines.push(`${new Date().toLocaleTimeString('en-GB')}  ${t}`); showLog('tally-log', lines); };
+    btn.disabled = true;
+    badge.className = 'status-badge sent'; badge.textContent = 'Reading Tally…';
+    let total = 0, host = '';
+    const from = document.getElementById('tally-from').value, to = document.getElementById('tally-to').value;
+    try {
+        const p = await bridgePing();
+        if (!p) throw new Error(BRIDGE_HELP);
+        if (!p.tally_ok) throw new Error(p.error);
+        host = p.host;
+        log(`This computer: ${host} - Tally companies open: ${(p.companies || []).join(', ') || 'none'}`);
+        const plan = await apiJson('/api/grin/tally/plan', 'POST', { from, to });
+        for (const c of plan.chunks) {
+            let res = null, how = '';
+            for (const mode of ['collection', 'daybook']) {
+                const r = await fetch(`${BRIDGE}/tally`, { method: 'POST', body: c[mode] });
+                const text = await r.text();
+                if (!r.ok) throw new Error((() => { try { return JSON.parse(text).error; } catch (e) { return text; } })());
+                const gz = await gzipB64(text);
+                res = await apiJson('/api/grin/tally/ingest', 'POST',
+                    Object.assign({ company: c.company, from: c.from, to: c.to, mode }, gz ? { gz } : { text }));
+                how = mode === 'daybook' ? 'day book' : 'collection';
+                if (res.error && mode === 'collection') { log(`collection request refused (${res.error.slice(0, 100)}) - trying Day Book`); continue; }
+                if (res.error) throw new Error(res.error);
+                if (res.usable) break;
+            }
+            total += res.invoices || 0;
+            log(`${c.company || 'open company'} ${dmy(c.from)} - ${dmy(c.to)}: ${res.vouchers} vouchers, ${res.invoices} TAFE sales invoices (${how})`);
+        }
+        log(`Done - ${total} TAFE invoices read from ${host}`);
+        await apiJson('/api/grin/tally/done', 'POST', { invoices: total, from, to, host });
+        badge.className = 'status-badge active'; badge.textContent = `Last pull ${when(new Date().toISOString())}`;
+        showToast(`Tally (${esc(host)}): ${total} TAFE invoices read`, 'success');
+    } catch (e) {
+        log(`Stopped: ${e.message.replace(/<[^>]+>/g, '')}`);
+        badge.className = 'status-badge inactive'; badge.textContent = 'Last pull stopped';
+        showToast(e.message, 'danger', 12000);
+    }
+    btn.disabled = false;
+    loadSources(true);
+    loadStatus(0);
+}
+
+async function tallyPullServer() {
     try {
         await apiJson('/api/grin/tally/pull', 'POST', {
             from: document.getElementById('tally-from').value, to: document.getElementById('tally-to').value });

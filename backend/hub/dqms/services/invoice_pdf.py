@@ -11,7 +11,8 @@ What is taken from each invoice:
     item lines           1210A01402 - ASSY BREATHER PIPE LH ... 50.000 QTY  153.99  QTY  7,699.50
     Output IGST / CGST / SGST amounts
     Total                8,084.00               -> Final Invoice Value
-    No of Packeges :1                           -> Invoice Unit
+    Unit Size : 2                               -> Invoice Unit = qty / Unit Size (bins as TAFE counts them)
+    No of Packeges :1                           -> Invoice Unit when the invoice has no Unit Size
     Remarks: ... DR 12029209                    -> DR No.
 """
 import io
@@ -30,6 +31,8 @@ PKG_RE = re.compile(r"No\.?\s*of\s*Pack\w*\s*:\s*(\d+)", re.I)
 DR_RE = re.compile(r"(?<![A-Za-z])D\.?D?\.?R\.?\s*(?:No\.?)?\s*[:.\-]?\s*(\d{6,10})\b", re.I)
 EWAY_RE = re.compile(r"e\s*-?\s*Way\s*Bill\s*(?:No\.?|Number)?\s*[:.\-]?\s*(\d{4}\s?\d{4}\s?\d{4})", re.I)
 ORDER_RE = re.compile(r"\b(1\d{9}|2\d{9})\b")
+ORDER_ANY_RE = re.compile(r"\b([12]\d{7,10})\b")      # a mistyped order no. (one digit short / extra)
+UNIT_SIZE_RE = re.compile(r"Unit\s*Size\s*:?\s*(\d+(?:\.\d+)?)", re.I)
 
 
 def _num(s):
@@ -91,6 +94,10 @@ def parse_page(text):
         m = ORDER_RE.search(text[k:k + 1500])
         if m:
             order_no = m.group(1)
+        else:
+            m = ORDER_ANY_RE.search(text[k:k + 1500])
+            if m:
+                order_no = m.group(1)   # checked against the PO list in the builder
 
     items = []
     for ln in lines:
@@ -116,11 +123,14 @@ def parse_page(text):
     round_off = (-1 if rnd and rnd.group(1) else 1) * _num(rnd.group(2)) if rnd else 0.0
 
     pk = PKG_RE.search(text)
+    us = UNIT_SIZE_RE.search(text)
+    unit_size = _num(us.group(1)) if us and _num(us.group(1)) > 0 else None
     rem = text[text.find("Remarks"):] if "Remarks" in text else text
     drs = list(dict.fromkeys(DR_RE.findall(rem)))
     ew = EWAY_RE.search(text)
     return dict(eway=re.sub(r"\s", "", ew.group(1)) if ew else "", inv_no=inv_no, inv_date=inv_date, order_no=order_no, items=items, taxes=taxes,
                 total=total, round_off=round_off, packages=int(pk.group(1)) if pk else None, drs=drs,
+                unit_size=unit_size,
                 consignee=_consignee(text))
 
 
@@ -160,6 +170,8 @@ def parse_pdf(data):
                 inv["drs"] = list(dict.fromkeys(inv["drs"] + p["drs"]))
                 if p["packages"] is not None:
                     inv["packages"] = p["packages"]
+                if p["unit_size"] and not inv["unit_size"]:
+                    inv["unit_size"] = p["unit_size"]
         cur = no
     out = []
     for no in order:
@@ -179,8 +191,8 @@ def parse_pdf(data):
             calc = sum(i["amount"] for i in inv["items"]) + sum(inv["taxes"].values()) + inv["round_off"]
             if inv["items"] and abs(calc - inv["total"]) > 1.0:
                 w.append(f"Lines + tax ({calc:,.2f}) do not add up to the total ({inv['total']:,.2f})")
-        if inv["packages"] is None:
-            w.append("'No of Packeges' not found - Invoice Unit left blank")
+        if inv["unit_size"] is None and inv["packages"] is None:
+            w.append("Neither 'Unit Size' nor 'No of Packeges' found - Invoice Unit left blank")
         inv["warnings"] = w
         out.append(inv)
     return out, warnings

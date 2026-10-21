@@ -4,3 +4,4 @@ data/
 tools/
 *.bat
 .env
+/SDEW-Tally-Bridge.exe

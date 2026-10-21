@@ -7,6 +7,15 @@ PROJECT_ROOT = os.path.dirname(BACKEND_DIR)                     # the SDEWHub fo
 
 ON_VERCEL = bool(os.environ.get("VERCEL"))
 
+# All times the hub writes (uploaded at, fetched at, report time, mail sent ...) are India time.
+# Vercel's servers run on UTC, which showed every time 5 h 30 min early. "IST-5:30" is a fixed offset,
+# so it needs no time-zone files on the server. On the Windows PC the clock is already India time.
+if ON_VERCEL or os.environ.get("HUB_FORCE_IST"):
+    import time as _time
+    os.environ["TZ"] = "IST-5:30"
+    if hasattr(_time, "tzset"):
+        _time.tzset()
+
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 # On Vercel only /tmp can be written (and it is wiped) - everything lasting is in Turso.
 DATA_DIR = os.environ.get("HUB_DATA_DIR") or ("/tmp/sdew-hub-data" if ON_VERCEL else os.path.join(PROJECT_ROOT, "data"))

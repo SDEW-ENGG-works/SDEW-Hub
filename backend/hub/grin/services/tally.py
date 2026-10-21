@@ -321,3 +321,39 @@ def _run(url, companies, d1, d2, parties):
     finally:
         STATUS["running"] = False
         STATUS["finished"] = datetime.now().isoformat(timespec="seconds")
+
+
+# ----------------------------------------------------------------------------- the website's pull (browser + bridge)
+# On the website the BROWSER asks Tally, through tools/tally_bridge.py on the computer it runs on, so every
+# computer pulls its own Tally. The server only builds the requests and reads the answers.
+def chunks(d1, d2, days=7):
+    """Week-sized pieces: a week's Tally answer stays well below Vercel's 4.5 MB request limit."""
+    d = d1
+    while d <= d2:
+        e = min(d2, d + timedelta(days=days - 1))
+        yield d, e
+        d = e + timedelta(days=1)
+
+
+def plan(companies, d1, d2):
+    out = []
+    for comp in companies or [""]:
+        name = comp.get("name", "") if isinstance(comp, dict) else comp
+        for a, b in chunks(d1, d2):
+            out.append(dict(company=name, **{"from": a.isoformat()}, to=b.isoformat(),
+                            collection=collection_request(name, a, b), daybook=daybook_request(name, a, b)))
+    return out
+
+
+def ingest_text(text, company, a, b, parties, mode):
+    """One Tally answer from the browser -> stored. usable=False tells the browser to try the Day Book request."""
+    err = tally_error(text)
+    if err:
+        return dict(ok=False, error=err, usable=False)
+    vs = [x for x in parse_vouchers(text) if x["inv_date"] and a.isoformat() <= x["inv_date"] <= b.isoformat()]
+    usable = (vs and any(x["lines"] or x["amount"] for x in vs)) or mode == "daybook"
+    if not usable:
+        return dict(ok=True, usable=False, vouchers=len(vs), invoices=0)
+    sales = [x for x in vs if is_sales(x, parties)]
+    store(sales, company)
+    return dict(ok=True, usable=True, vouchers=len(vs), invoices=len(sales))

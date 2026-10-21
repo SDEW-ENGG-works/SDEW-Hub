@@ -56,15 +56,15 @@ def _invoices(name, data):
         t = inv["taxes"]
         con.execute(
             "INSERT INTO invoices(inv_no,inv_date,order_no,total,cgst,sgst,igst,packages,drs,items,consignee,warnings,"
-            "edits,file_name,uploaded_at,run_id,eway) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "edits,file_name,uploaded_at,run_id,eway,unit_size) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(inv_no) DO UPDATE SET inv_date=excluded.inv_date, order_no=excluded.order_no, total=excluded.total, "
             "cgst=excluded.cgst, sgst=excluded.sgst, igst=excluded.igst, packages=excluded.packages, drs=excluded.drs, "
             "items=excluded.items, consignee=excluded.consignee, warnings=excluded.warnings, file_name=excluded.file_name, "
-            "uploaded_at=excluded.uploaded_at, eway=excluded.eway",
+            "uploaded_at=excluded.uploaded_at, eway=excluded.eway, unit_size=excluded.unit_size",
             (inv["inv_no"], inv["inv_date"], inv["order_no"], inv["total"], t.get("cgst"), t.get("sgst"),
              (t.get("igst") or 0) + (t.get("utgst") or 0) or None, inv["packages"], json.dumps(inv["drs"]),
              json.dumps(inv["items"]), inv["consignee"], json.dumps(inv["warnings"]),
-             old["edits"] if old else "{}", name, _now(), old["run_id"] if old else None, inv.get("eway") or ""))
+             old["edits"] if old else "{}", name, _now(), old["run_id"] if old else None, inv.get("eway") or "", inv.get("unit_size")))
         (updated if old else new).append(inv["inv_no"])
     con.commit()
     return dict(kind="invoices", file=name, new=new, updated=updated, warnings=warns)

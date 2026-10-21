@@ -144,7 +144,7 @@ MIGRATIONS = [
     ("run_lines", "old_src", "TEXT"),
     ("batches", "data", "BLOB"),
     ("chep_runs", "leap_status", "TEXT"), ("chep_runs", "leap_result", "TEXT"), ("chep_runs", "leap_at", "TEXT"),
-    ("invoices", "eway", "TEXT"),
+    ("invoices", "eway", "TEXT"), ("invoices", "unit_size", "REAL"),
 ]
 
 
@@ -174,7 +174,7 @@ MODULE_RENAMES = {"chep": {"chep_runs": "runs"}, "dqms": {"dqms_runs": "runs"}}
 # columns the old apps added over time (same list as their own db.py)
 MODULE_MIGRATIONS = {"chep": [("batches", "data", "BLOB"), ("runs", "leap_status", "TEXT"),
                               ("runs", "leap_result", "TEXT"), ("runs", "leap_at", "TEXT")],
-                     "dqms": [("invoices", "eway", "TEXT")]}
+                     "dqms": [("invoices", "eway", "TEXT"), ("invoices", "unit_size", "REAL")]}
 _mod_ready = set()
 
 

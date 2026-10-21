@@ -125,3 +125,12 @@ Without `TURSO_DATABASE_URL` the website falls back to reading the old CHEP / DQ
 on the PC (start.bat, `USE_CLOUD_DB=1`) picks it up within seconds, runs it and writes the log back
 (`backend/hub/services/pc_jobs.py`). The Get data tab shows whether the SDEW PC is online. If the PC is offline,
 Fetch GRIN on the website tries TAFE Channel directly (no browser, `supp/services/grin_http.py`).
+
+## Pull from Tally on the website = the Tally of the computer you are using (21-Oct-2026)
+The browser reads Tally through the **Tally bridge** (`tally_bridge.bat` / `tools\tally_bridge.py`, port 9001) running on
+the same computer, and sends the answers to the website week by week (gzip, under Vercel's 4.5 MB limit).
+On every computer that has Tally: download **SDEW-Tally-Bridge.exe** (link on the Get data tab, or the copy in this folder)
+and double-click it once - it installs itself to `%LOCALAPPDATA%\SDEW`, runs hidden and starts with Windows
+(`--uninstall` removes it; source in `tools\tally_bridge_go\`). `tally_bridge.bat` (Python) does the same job without installing.
+Only the hub's pages (sdew-hub*.vercel.app, localhost:8050) may use the bridge. Chrome/Edge ask once to allow
+"access to devices on your local network" - press Allow. The hub on a PC (localhost:8050) still pulls its own Tally directly.

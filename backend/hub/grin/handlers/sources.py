@@ -37,7 +37,7 @@ def sources(req):
         tally=dict(url=s["tally_url"], companies=s["tally_companies"],
                    **_one("SELECT COUNT(*) n, MIN(inv_date) first, MAX(inv_date) last, MAX(pulled_at) pulled "
                           "FROM gp_tally_invoices"),
-                   status=pc_jobs.status("tally_pull") if config.ON_VERCEL else tally.STATUS,
+                   status=tally.STATUS if not config.ON_VERCEL else dict(running=False, log=[], error="", finished=""),
                    on_pc=config.ON_VERCEL, agent=pc_jobs.agent_info()),
         sales=_one(f"SELECT COUNT(DISTINCT voucher) n, MIN(inv_date) first, MAX(inv_date) last FROM sales_lines "
                    f"WHERE party IN ({ph})", parties),
@@ -111,3 +111,52 @@ def tally_status(req):
     if not tally.STATUS["running"]:
         st.invalidate()
     return tally.STATUS
+
+
+# ---- the website's "Pull from Tally": the browser asks THIS computer's Tally through tools/tally_bridge.py ----
+@route("POST", r"/api/tally/plan")
+def tally_plan(req):
+    b = req.json
+    s = load_settings()
+    try:
+        d2 = date.fromisoformat(b.get("to") or date.today().isoformat())
+        d1 = date.fromisoformat(b.get("from") or (d2 - timedelta(days=45)).isoformat())
+    except ValueError:
+        raise ApiError("Dates must be yyyy-mm-dd")
+    if d1 > d2:
+        raise ApiError("From date is after To date")
+    comps = b.get("companies") if b.get("companies") is not None else s["tally_companies"]
+    return dict(chunks=tally.plan(comps, d1, d2))
+
+
+@route("POST", r"/api/tally/ingest")
+def tally_ingest(req):
+    import base64
+    import gzip
+    b = req.json
+    try:
+        a, z = date.fromisoformat(b["from"]), date.fromisoformat(b["to"])
+    except (KeyError, ValueError):
+        raise ApiError("from / to missing")
+    if b.get("gz"):
+        text = gzip.decompress(base64.b64decode(b["gz"])).decode("utf-8", errors="replace")
+    else:
+        text = b.get("text") or ""
+    if not text.strip():
+        raise ApiError("Empty answer from Tally")
+    try:
+        r = tally.ingest_text(text, b.get("company") or "", a, z, {p["party"] for p in plants()}, b.get("mode") or "")
+    except Exception as e:  # noqa: BLE001
+        raise ApiError(f"Tally answer could not be read: {e}")
+    st.invalidate()
+    return r
+
+
+@route("POST", r"/api/tally/done")
+def tally_done(req):
+    from ...db import log
+    b = req.json
+    log("grin", "Tally pull (website)", f"{b.get('invoices', 0)} invoices {b.get('from')} to {b.get('to')} "
+        f"from {b.get('host') or 'this computer'}")
+    st.invalidate()
+    return dict(ok=True)

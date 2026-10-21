@@ -108,6 +108,7 @@ async function searchGrin() {
 function initGrinDates() {
     const to = new Date();
     const from = new Date(to.getTime() - 45 * 86400000);
-    document.getElementById('sync-to').value = to.toISOString().slice(0, 10);
-    document.getElementById('sync-from').value = from.toISOString().slice(0, 10);
+    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);  // local date
+    document.getElementById('sync-to').value = iso(to);
+    document.getElementById('sync-from').value = iso(from);
 }

@@ -45,7 +45,8 @@ function renderTemplateInfo() {
     const el = document.getElementById('template-info');
     if (t.error) { el.innerHTML = `<p class="hint" style="color:var(--danger)">${esc(t.error)}</p>`; return; }
     const r = t.date_range;
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);  // local date
     const old = r && r.end && r.end < today;
     const ref = t.reference || {};
     el.innerHTML = `<div class="tpl-info">
