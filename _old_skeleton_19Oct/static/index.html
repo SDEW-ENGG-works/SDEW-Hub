@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SDEW Hub</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <form id="loginForm" class="login-box">
+    <h1>SDEW Hub</h1>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" autofocus>
+    <button class="btn primary" type="submit">Log in</button>
+    <p id="loginMsg" class="msg-err"></p>
+  </form>
+</div>
+
+<div class="shell">
+  <nav class="side" aria-label="Modules">
+    <a class="brand" href="#/">SDEW Hub<span>Sri Durga Engineering Works</span></a>
+    <a href="#/">Today</a>
+    <a href="#/inbox">Drop files</a>
+    <p class="side-group">Order to payment</p>
+    <a href="#/pos"><i>1</i>POs &amp; pricing</a>
+    <a href="#/drs"><i>2</i>Delivery requests</a>
+    <a href="#/invoices"><i>3</i>Invoices</a>
+    <a href="#/chep"><i>4</i>Dispatch &amp; CHEP</a>
+    <a href="#/dqms"><i>5</i>DQMS upload</a>
+    <a href="#/grin"><i>6</i>GRIN</a>
+    <a href="#/supp"><i>7</i>Supplementary bill</a>
+    <p class="side-group">Control</p>
+    <a href="#/exceptions">Needs attention <b id="excBadge" class="badge" hidden></b></a>
+    <a href="#/open-items">Open items <b id="openBadge" class="badge quiet" hidden></b></a>
+    <a href="#/masters">Masters</a>
+    <a href="#/legacy-data">Old app data</a>
+    <button id="logout" class="link side-foot" hidden>Log out</button>
+  </nav>
+  <main id="main" tabindex="-1"></main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

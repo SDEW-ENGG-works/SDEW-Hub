@@ -1,0 +1,106 @@
+/* Rate Card stats, table controls, status badges */
+
+/* ============ STATS GRID (ADMIN) ============ */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.stat-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    box-shadow: var(--shadow-card);
+}
+
+.stat-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.stat-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.stat-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.stat-value {
+    font-family: var(--font);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+/* ============ TABLE CONTROLS ============ */
+.table-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    gap: 0.6rem;
+}
+
+.filter-group select {
+    width: 160px;
+}
+
+/* ============ STATUS BADGES ============ */
+.status-badge {
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.status-badge.active,
+.status-badge.accepted {
+    background: var(--success-soft);
+    color: var(--success);
+}
+
+.status-badge.inactive,
+.status-badge.rejected {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+.status-badge.draft {
+    background: var(--line);
+    color: var(--muted);
+}
+
+.status-badge.sent {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+/* landed price (with GST) is shown for reference only; cost sheets use the price before GST */
+.rm-landed-ref {
+    color: var(--muted);
+}

@@ -1,0 +1,110 @@
+/* CHEP Transfer pages. Everything else comes from the SDEW Quote / Supplementary Bill files. */
+
+.dropzone.compact { padding: 1.6rem 1rem; }
+.hint.no-margin { margin: 0; }
+.opt { color: var(--dim); font-weight: 400; }
+.span-2 { grid-column: span 2; }
+
+/* ---- sheets of the packing list ---- */
+.sheet-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.6rem; }
+.sheet-item {
+    display: flex; gap: 0.65rem; align-items: flex-start;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--line); border-radius: var(--radius-md);
+    background: var(--card-alt); cursor: pointer; transition: var(--transition);
+}
+.sheet-item:hover { border-color: var(--line-strong); }
+.sheet-item.on { background: var(--accent-soft); border-color: var(--accent-soft-line); }
+.sheet-item input { margin-top: 0.2rem; width: auto; }
+.sheet-item .s-name { font-weight: 600; color: var(--ink); font-size: 0.86rem; }
+.sheet-item .s-sub { font-size: 0.76rem; color: var(--muted); margin-top: 0.15rem; }
+.sheet-item .s-sub b { color: var(--text); }
+.sheet-item.noplant .s-name::after { content: " · no plant"; color: var(--danger); font-weight: 500; font-size: 0.74rem; }
+
+/* ---- warnings ---- */
+.warn-card { border-left: 3px solid var(--warning); }
+.info-card { border-left: 3px solid var(--success); padding-top: 0.9rem; padding-bottom: 0.9rem; }
+.warn-list { margin: 0; padding-left: 1.1rem; font-size: 0.83rem; color: var(--text); display: flex; flex-direction: column; gap: 0.3rem; }
+
+#st-attn-card.bad .stat-value { color: var(--danger); }
+#st-attn-card.good .stat-value { color: var(--success); }
+
+/* ---- lines ---- */
+.data-table tr.row-missing td { background: var(--danger-soft); }
+.data-table tr.row-history td { background: var(--warning-soft); }
+.data-table tr.row-carton td { color: var(--dim); }
+.size-select { padding: 0.3rem 0.45rem !important; font-size: 0.8rem !important; min-width: 170px; }
+.size-select.need { border-color: var(--danger) !important; }
+.sku-list { font-size: 0.76rem; color: var(--muted); }
+.note { display: block; font-size: 0.72rem; color: var(--muted); white-space: normal; max-width: 260px; }
+
+/* ---- template preview (looks like the portal file) ---- */
+.preview-wrap { max-height: 520px; overflow-y: auto; }
+.tpl-table th.red { background: #ff0000; color: #fff; }
+.tpl-table td.rn { color: var(--dim); }
+.tpl-table tr.lid td { border-bottom: 1px solid var(--line-strong); }
+
+/* ---- settings ---- */
+.tpl-info { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.6rem 1.2rem; font-size: 0.83rem; }
+.tpl-info .k { color: var(--muted); font-size: 0.74rem; display: block; }
+.tpl-info .v { color: var(--ink); font-weight: 600; word-break: break-word; }
+.tpl-info .v.bad { color: var(--danger); }
+.ref-chips { margin-top: 0.8rem; }
+.btn-row label.btn { cursor: pointer; }
+
+@media (max-width: 1100px) { .span-2 { grid-column: span 2; } }
+@media (max-width: 720px) { .span-2 { grid-column: auto; } }
+
+/* ---- login page ---- */
+.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.login-card {
+    width: 100%; max-width: 360px; background: var(--card);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card); padding: 2rem 1.75rem 1.75rem;
+}
+.login-logo { display: block; margin: 0 auto 0.4rem; height: 40px; width: auto; }
+.login-sub { text-align: center; color: var(--muted); font-size: 0.85rem; font-weight: 600; margin-bottom: 1.5rem; }
+.login-card .form-group { margin-bottom: 0.6rem; }
+.login-card input[type="password"] {
+    width: 100%; background: #fff; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    padding: 0.6rem 0.75rem; font-family: var(--font); font-size: 0.92rem; color: var(--text);
+}
+.login-card input[type="password"]:focus { outline: none; border-color: var(--accent); }
+.login-error { min-height: 1.2rem; color: var(--danger); font-size: 0.8rem; margin-bottom: 0.4rem; }
+.login-btn { width: 100%; justify-content: center; }
+.nav-btn.logout { color: var(--muted); }
+
+/* ---- older sheets of the packing list ---- */
+.sheet-more { margin-top: 0.7rem; font-size: 0.8rem; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; font-family: var(--font); font-weight: 600; }
+.sheet-more:hover { text-decoration: underline; }
+
+/* ---- LEAP page ---- */
+.stats-grid.three { grid-template-columns: repeat(3, 1fr); }
+.leap-grid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 1.2rem; align-items: start; }
+.leap-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+.leap-step { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.84rem; color: var(--muted); }
+.leap-step .ico { width: 22px; height: 22px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; border: 1.5px solid var(--line-strong); background: #fff; }
+.leap-step .lbl { color: var(--text); font-weight: 500; }
+.leap-step .det { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; word-break: break-word; }
+.leap-step.done .ico { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+.leap-step.doing .ico { border-color: var(--accent); color: var(--accent); animation: leapPulse 1.2s ease-in-out infinite; }
+.leap-step.doing .lbl { color: var(--accent); font-weight: 600; }
+.leap-step.waiting .ico { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
+.leap-step.waiting .lbl { color: var(--warning); font-weight: 600; }
+.leap-step.error .ico { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.leap-step.skip { opacity: 0.55; }
+@keyframes leapPulse { 50% { opacity: 0.35; } }
+.leap-submit { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 0.8rem; }
+.leap-submit.ok { border-color: var(--success); background: var(--success-soft); }
+.leap-submit.bad { border-color: var(--danger); background: var(--danger-soft); }
+.leap-submit p { font-size: 0.85rem; margin: 0.7rem 0; }
+.leap-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+.leap-counts div { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.5rem 0.7rem; }
+.leap-counts span { display: block; font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+.leap-counts b { font-size: 1.25rem; color: var(--ink); }
+.leap-counts .red b { color: var(--danger); }
+.leap-errors { font-size: 0.78rem; max-height: 180px; overflow: auto; margin-bottom: 0.7rem; }
+.leap-errors ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+#leap-log { max-height: 300px; min-height: 120px; margin-top: 0; }
+@media (max-width: 900px) { .leap-grid { grid-template-columns: 1fr; } .stats-grid.three { grid-template-columns: 1fr; } }

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — CHEP Transfer</title>
+    <link rel="icon" href="/assets/favicon.svg?v=fd66ffa491">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css?v=8fef5516b1">
+    <link rel="stylesheet" href="css/03-tables.css?v=39af8da3c3">
+    <link rel="stylesheet" href="css/05-ratecard.css?v=a6e7e5b643">
+    <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
+    <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
+    <link rel="stylesheet" href="css/30-chep.css?v=76a684fbc0">
+    <link rel="stylesheet" href="/css/hub.css?v=4fe2a943fc">
+    <script src="/js/hubbar.js?v=d4fc5a64ae"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar (same as SDEW Quote / Supplementary Bill) -->
+        <header class="navbar">
+            <div class="nav-brand">
+                <img class="brand-logo" src="assets/sdew-logo.jpg?v=3908bac85d" alt="Sri Durga Engg. Works" width="189" height="40">
+                <span class="brand-divider" aria-hidden="true"></span>
+                <span class="brand-subtitle">CHEP Transfer</span>
+                <span class="status-badge muted" id="db-mode" style="display:none"></span>
+            </div>
+
+            <nav class="nav-links">
+                <button class="nav-btn active" id="nav-create-btn" onclick="switchView('create')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Create
+                </button>
+                <button class="nav-btn" id="nav-history-btn" onclick="switchView('history')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    History
+                    <span class="badge secondary" id="runs-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-parts-btn" onclick="switchView('parts')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                    Parts
+                    <span class="badge secondary" id="parts-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-leap-btn" onclick="switchView('leap')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+                    LEAP
+                    <span class="badge" id="leap-badge" style="display:none">…</span>
+                </button>
+                <button class="nav-btn" id="nav-settings-btn" onclick="switchView('settings')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </button>
+                <button class="nav-btn logout" id="nav-logout-btn" onclick="logout()" style="display:none" title="Log out">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    Log out
+                </button>
+            </nav>
+        </header>
+
+        <!-- ============ CREATE ============ -->
+        <section class="view-section active" id="create-view">
+            <div class="section-header">
+                <div>
+                    <h2>CHEP Bulk Transfer</h2>
+                    <p class="section-desc" id="create-desc">Upload the day's packing list — the app fills the CHEP portal template from it.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-outline" id="btn-create-refresh" onclick="refreshCreate()" title="Clear the page and start with a new packing list (History, Parts and Settings are kept)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        Refresh
+                    </button>
+                    <button class="btn btn-outline" id="btn-save" onclick="saveFile()" disabled title="Save to History without downloading">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save
+                    </button>
+                    <button class="btn btn-outline" id="btn-save-leap" onclick="saveFile(true)" disabled title="Save to History and open it on the LEAP page">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"></path><path d="M22 2 15 22 11 13 2 9 22 2z"></path></svg>
+                        Save &amp; send to LEAP
+                    </button>
+                    <button class="btn btn-primary" id="btn-generate" onclick="generateFile()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download CHEP template
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <label class="dropzone compact" id="dropzone">
+                    <input type="file" id="file-input" accept=".xls,.xlsx" onchange="uploadPacking(this.files)">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <strong>Drop the packing list here or click to choose</strong>
+                    <span id="dropzone-sub">e.g. 05-10-2026 packing list.xls — the sheets of the latest day are ticked for you</span>
+                </label>
+            </div>
+
+            <div id="create-body" style="display:none;">
+                <div class="card">
+                    <div class="card-header-flex">
+                        <div class="card-title">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                            <span id="batch-name">Packing list</span>
+                        </div>
+                        <span class="hint no-margin" id="batch-sub"></span>
+                    </div>
+                    <p class="hint">Tick the sheets that go in this CHEP transfer.</p>
+                    <div class="sheet-list" id="sheet-list"></div>
+                    <button class="sheet-more" id="sheet-more" type="button" onclick="toggleOlder()" style="display:none"></button>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Transfer details</div>
+                    <div class="form-grid-4">
+                        <div class="form-group"><label>Doc Date</label><input type="date" id="f-doc-date" onchange="schedulePreview()"></div>
+                        <div class="form-group"><label>Transporter Name <span class="opt">(optional)</span></label><input type="text" id="f-transporter" oninput="schedulePreview()"></div>
+                        <div class="form-group"><label>Vehicle No <span class="opt">(optional)</span></label><input type="text" id="f-vehicle" oninput="schedulePreview()"></div>
+                        <div class="form-group"><label>LR No <span class="opt">(optional)</span></label><input type="text" id="f-lr" oninput="schedulePreview()"></div>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-icon">#</div><div class="stat-info"><span class="stat-label">Invoices in CHEP</span><span class="stat-value" id="st-invoices">—</span><span class="stat-sub" id="st-invoices-sub"></span></div></div>
+                    <div class="stat-card"><div class="stat-icon">C</div><div class="stat-info"><span class="stat-label">CHEPs</span><span class="stat-value" id="st-cheps">—</span><span class="stat-sub" id="st-cheps-sub"></span></div></div>
+                    <div class="stat-card"><div class="stat-icon">R</div><div class="stat-info"><span class="stat-label">Template rows</span><span class="stat-value" id="st-rows">—</span><span class="stat-sub">pallet + lid per invoice</span></div></div>
+                    <div class="stat-card" id="st-attn-card"><div class="stat-icon">!</div><div class="stat-info"><span class="stat-label">Need a CHEP size</span><span class="stat-value" id="st-missing">—</span><span class="stat-sub" id="st-missing-sub"></span></div></div>
+                </div>
+
+                <div class="card warn-card" id="warn-card" style="display:none;">
+                    <div class="card-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        Check before uploading to CHEP
+                    </div>
+                    <ul class="warn-list" id="warn-list"></ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-header-flex">
+                        <div class="category-pills" id="line-pills"></div>
+                        <div class="search-box"><input type="text" id="line-search" placeholder="Search invoice or part…" oninput="renderLines()"></div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table bill-table">
+                            <thead>
+                                <tr><th>Plant</th><th>S No</th><th>DR No</th><th>Part name</th><th class="num">Qty</th><th>Invoice No</th><th>Date</th>
+                                    <th class="num">CHEP</th><th class="num">Carton</th><th>CHEP size</th><th>Size from</th><th>SKUs in template</th></tr>
+                            </thead>
+                            <tbody id="lines-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header-flex">
+                        <div class="card-title">Template preview <span class="hint no-margin" id="preview-sub"></span></div>
+                    </div>
+                    <div class="table-wrapper preview-wrap">
+                        <table class="data-table bill-table tpl-table">
+                            <thead><tr><th>#</th><th class="red">BP Code</th><th class="red">To Customer</th><th class="red">SKUs</th><th class="red">Quantity</th><th class="red">Doc Date</th>
+                                <th>Transporter Name</th><th>Vehicle No</th><th>LR No</th><th class="red">Invoice No</th><th>Remarks</th></tr></thead>
+                            <tbody id="preview-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ HISTORY ============ -->
+        <section class="view-section" id="history-view">
+            <div class="section-header">
+                <div>
+                    <h2>History</h2>
+                    <p class="section-desc">Every CHEP template made — download any of them again, or tick several and combine them into one sheet.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="btn-combine" onclick="combineRuns()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Combine &amp; download
+                    </button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th style="width:36px"><input type="checkbox" id="runs-all" title="Tick all" onchange="tickAllRuns(this.checked)"></th><th>Made on</th><th>File</th><th>Doc Date</th><th>Packing list</th><th>Sheets</th><th class="num">Invoices</th><th class="num">CHEPs</th><th class="num">Rows</th><th>LEAP</th><th></th></tr></thead>
+                        <tbody id="runs-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ PARTS ============ -->
+        <section class="view-section" id="parts-view">
+            <div class="section-header">
+                <div>
+                    <h2>Parts — CHEP size</h2>
+                    <p class="section-desc">The CHEP size each part goes in. Learned from every packing list uploaded; used when no size is ticked for an invoice. Sizes you set here are never overwritten.</p>
+                </div>
+                <div class="header-actions">
+                    <div class="search-box"><input type="text" id="parts-search" placeholder="Search part…" oninput="renderParts()"></div>
+                    <button class="btn btn-outline" onclick="addPart()">+ Add part</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Part No</th><th>Part name</th><th>CHEP size</th><th>SKUs</th><th>Learned from</th><th>Updated</th><th></th></tr></thead>
+                        <tbody id="parts-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <!-- ============ LEAP ============ -->
+        <section class="view-section" id="leap-view">
+            <div class="section-header">
+                <div>
+                    <h2>LEAP upload</h2>
+                    <p class="section-desc">Uploads a CHEP file to my.leap-india.com, waits for your OK to submit, then downloads the "Pending Inwards at C2" report and checks every invoice.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-outline" id="btn-leap-refresh" onclick="refreshLeap()" title="Load the History files and the LEAP status again">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="card info-card" id="leap-remote-note" style="display:none;">
+                <p class="hint no-margin"><span></span></p>
+            </div>
+
+            <div class="card warn-card" id="leap-unavailable" style="display:none;">
+                <div class="card-title">LEAP automation is not ready</div>
+                <p class="hint no-margin"><span></span></p>
+            </div>
+
+            <div class="card">
+                <div class="form-grid-4 align-end">
+                    <div class="form-group span-2"><label>CHEP file (from History)</label><select id="leap-run"></select></div>
+                    <div class="form-group"><label class="check"><input type="checkbox" id="leap-headed"> <span id="leap-headed-text">Show the LEAP browser window</span></label></div>
+                    <div class="form-group">
+                        <div class="btn-row">
+                            <button class="btn btn-primary" id="btn-leap-upload" onclick="startLeap('upload')">Upload to LEAP</button>
+                            <button class="btn btn-outline" id="btn-leap-verify" onclick="startLeap('verify')" title="Only download the report and check this file - for files uploaded by hand">Check only</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="leap-progress" style="display:none;">
+                <div class="card-header-flex">
+                    <div class="card-title"><span id="leap-title"></span></div>
+                    <div class="btn-row"><span class="status-badge" id="leap-phase"></span>
+                        <button class="btn btn-danger-text btn-sm" id="btn-leap-cancel" onclick="leapCancel()" style="display:none">Stop</button></div>
+                </div>
+                <div class="leap-grid">
+                    <ol class="leap-steps" id="leap-steps"></ol>
+                    <div>
+                        <div id="leap-submit-box" style="display:none;"></div>
+                        <pre class="log-box" id="leap-log"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="leap-verify-card" style="display:none;">
+                <div class="card-header-flex">
+                    <div class="card-title">Check against LEAP <span class="hint no-margin" id="lv-sub"></span></div>
+                    <button class="btn btn-primary btn-sm" id="lv-retry" style="display:none">Download retry file (missing invoices)</button>
+                </div>
+                <div class="stats-grid three">
+                    <div class="stat-card"><div class="stat-icon">✓</div><div class="stat-info"><span class="stat-label">Confirmed in LEAP</span><span class="stat-value" id="lv-confirmed">—</span></div></div>
+                    <div class="stat-card"><div class="stat-icon">✕</div><div class="stat-info"><span class="stat-label">Missing</span><span class="stat-value" id="lv-missing">—</span><span class="stat-sub">failed, or TAFE already received it</span></div></div>
+                    <div class="stat-card"><div class="stat-icon">≠</div><div class="stat-info"><span class="stat-label">Quantity differs</span><span class="stat-value" id="lv-other">—</span></div></div>
+                </div>
+                <div class="category-pills" id="lv-pills" style="margin-bottom:0.8rem"></div>
+                <div class="table-wrapper">
+                    <table class="data-table bill-table">
+                        <thead><tr><th>Invoice No</th><th>To Customer</th><th>Part</th><th>Result</th><th>In our file</th><th>In LEAP</th><th>LEAP documents</th></tr></thead>
+                        <tbody id="lv-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="view-section" id="settings-view">
+            <div class="section-header">
+                <div>
+                    <h2>Settings</h2>
+                    <p class="section-desc">CHEP codes used in the template. Press <b>Save</b> after changing.</p>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">General</div>
+                <div class="form-grid-4">
+                    <div class="form-group"><label>BP Code (SDEW's CHEP code)</label><input type="text" id="set-bp"></div>
+                    <div class="form-group span-2"><label>File name ( {date} = Doc Date )</label><input type="text" id="set-fname"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Plants</div>
+                    <button class="btn btn-outline btn-sm" onclick="addPlant()">+ Add plant</button>
+                </div>
+                <p class="hint">The plant word is looked for in the sheet title / sheet name ("MDU - UDDHAVA TRANSPORTS"). Rows go in the template in this order.</p>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Plant word</th><th>CHEP To Customer</th><th>Note</th><th></th></tr></thead>
+                        <tbody id="plants-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">CHEP sizes</div>
+                    <button class="btn btn-outline btn-sm" onclick="addType()">+ Add size</button>
+                </div>
+                <p class="hint">One line per size column of the packing list. "Column headings" lists every heading used for it (new lists: 0 1 2 3 8, old lists: 14400…). Each CHEP gives a pallet row and a lid row with the same quantity.</p>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Size</th><th>Column headings</th><th>Pallet SKU</th><th>Lid SKU</th><th></th></tr></thead>
+                        <tbody id="types-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">CHEP portal template</div>
+                    <div class="btn-row">
+                        <a class="btn btn-outline btn-sm" href="/api/chep/template/file">Download blank template</a>
+                        <label class="btn btn-secondary btn-sm">Upload new template
+                            <input type="file" accept=".xlsx" style="display:none" onchange="uploadTemplate(this.files)"></label>
+                    </div>
+                </div>
+                <p class="hint">The portal's template only allows Doc Dates in a window around the day it was downloaded. When that window is old, download a fresh blank template from the CHEP portal and upload it here.</p>
+                <div id="template-info"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Clear data</div>
+                <p class="hint">Removes data from this app only.</p>
+                <div class="btn-row">
+                    <button class="btn btn-danger-text" onclick="clearData('runs')">Clear history</button>
+                    <button class="btn btn-danger-text" onclick="clearData('parts')">Clear part sizes</button>
+                    <button class="btn btn-danger-text" onclick="clearData('template')">Go back to the template that came with the app</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Part modal -->
+    <div class="modal-backdrop" id="part-modal" onclick="if (event.target === this) closeModal('part-modal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Part CHEP size</h3>
+                <button class="close-btn" onclick="closeModal('part-modal')">&times;</button>
+            </div>
+            <div class="form-grid-2">
+                <div class="form-group"><label>Part No</label><input type="text" id="pm-part"></div>
+                <div class="form-group"><label>CHEP size</label><select id="pm-type"></select></div>
+            </div>
+            <div class="form-group"><label>Part name <span class="opt">(optional)</span></label><input type="text" id="pm-name"></div>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeModal('part-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="savePart()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm modal -->
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="js/core/utils.js?v=a94942f109"></script>
+    <script src="js/pages/create.js?v=00379f0166"></script>
+    <script src="js/pages/history.js?v=9a6d39ff33"></script>
+    <script src="js/pages/parts.js?v=0abb5c733b"></script>
+    <script src="js/pages/settings.js?v=bcc859c76c"></script>
+    <script src="js/pages/leap.js?v=7eba4834c7"></script>
+    <script src="js/main.js?v=4afd2218aa"></script>
+</body>
+
+</html>

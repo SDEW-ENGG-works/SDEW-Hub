@@ -1,0 +1,4 @@
+# Optional: the hub runs on the standard library. These improve file recognition.
+openpyxl
+xlrd
+pypdf

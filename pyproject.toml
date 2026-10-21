@@ -1,0 +1,13 @@
+[project]
+name = "sdew-hub"
+version = "1.0.0"
+description = "SDEW Hub - Supplementary Bill, CHEP Transfer and DQMS Upload in one app"
+requires-python = ">=3.10"
+dependencies = [
+    "openpyxl>=3.1.0",
+    "xlrd>=2.0.1",
+    "pypdf>=4.0.0",
+]
+
+[tool.vercel]
+entrypoint = "vercel_app:app"

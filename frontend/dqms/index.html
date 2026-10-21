@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — DQMS Upload</title>
+    <link rel="icon" href="/assets/favicon.svg?v=fd66ffa491">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css?v=8fef5516b1">
+    <link rel="stylesheet" href="css/03-tables.css?v=39af8da3c3">
+    <link rel="stylesheet" href="css/05-ratecard.css?v=a6e7e5b643">
+    <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
+    <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
+    <link rel="stylesheet" href="css/30-chep.css?v=500f329c58">
+    <link rel="stylesheet" href="css/40-dqms.css?v=1f8e9d0cec">
+    <link rel="stylesheet" href="/css/hub.css?v=4fe2a943fc">
+    <script src="/js/hubbar.js?v=d4fc5a64ae"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar (same as SDEW Quote / Supplementary Bill / CHEP Transfer) -->
+        <header class="navbar">
+            <div class="nav-brand">
+                <img class="brand-logo" src="assets/sdew-logo.jpg?v=3908bac85d" alt="Sri Durga Engg. Works" width="189" height="40">
+                <span class="brand-divider" aria-hidden="true"></span>
+                <span class="brand-subtitle">DQMS Upload</span>
+            </div>
+
+            <nav class="nav-links">
+                <button class="nav-btn active" id="nav-create-btn" onclick="switchView('create')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Create
+                </button>
+                <button class="nav-btn" id="nav-history-btn" onclick="switchView('history')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    History
+                    <span class="badge secondary" id="runs-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-pos-btn" onclick="switchView('pos')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                    POs
+                    <span class="badge secondary" id="pos-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-settings-btn" onclick="switchView('settings')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </button>
+                <button class="nav-btn logout" id="nav-logout-btn" onclick="logout()" style="display:none" title="Log out">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    Log out
+                </button>
+            </nav>
+        </header>
+
+        <!-- ============ CREATE ============ -->
+        <section class="view-section active" id="create-view">
+            <div class="section-header">
+                <div>
+                    <h2>DQMS Invoice &amp; Batch Upload</h2>
+                    <p class="section-desc">Drop the invoice PDFs and today's DQMS Batch Details report — the app fills TAFE's bulk upload template.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-outline" id="btn-fresh" onclick="startFresh()" title="Clear all invoices, the DQMS report and portal messages">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                        Start fresh
+                    </button>
+                    <button class="btn btn-primary" id="btn-generate" onclick="generateFile()" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download template (.csv)</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <label class="dropzone compact" id="dropzone">
+                    <input type="file" id="file-input" multiple accept=".pdf,.xls,.xlsx,.htm,.html,.csv" onchange="uploadFiles(this.files)">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <strong>Drop invoice PDFs, DR PDFs + the DQMS Batch Details report here, or click to choose</strong>
+                    <span id="dropzone-sub">Many files at once is fine. Also takes a PO (.htm) and the portal's status file (templateStatus.csv).</span>
+                </label>
+                <div class="report-strip" id="report-strip"></div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-icon">#</div><div class="stat-info"><span class="stat-label">Invoices ticked</span><span class="stat-value" id="st-invoices">—</span><span class="stat-sub" id="st-invoices-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">R</div><div class="stat-info"><span class="stat-label">Template rows</span><span class="stat-value" id="st-rows">—</span><span class="stat-sub" id="st-rows-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">₹</div><div class="stat-info"><span class="stat-label">Final invoice value</span><span class="stat-value" id="st-value">—</span><span class="stat-sub">of the ticked invoices</span></div></div>
+                <div class="stat-card" id="st-attn-card"><div class="stat-icon">!</div><div class="stat-info"><span class="stat-label">Need attention</span><span class="stat-value" id="st-blocked">—</span><span class="stat-sub" id="st-blocked-sub"></span></div></div>
+            </div>
+
+            <div class="card warn-card" id="warn-card" style="display:none;">
+                <div class="card-title">Check before uploading</div>
+                <ul class="warn-list" id="warn-list"></ul>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="category-pills" id="line-pills"></div>
+                    <div class="search-box"><input type="text" id="line-search" placeholder="Search invoice, part, DR…" oninput="renderLines()"></div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table bill-table inv-table">
+                        <thead>
+                            <tr><th style="width:30px"><input type="checkbox" id="inv-all" title="Tick all shown" onchange="tickAll(this.checked)"></th>
+                                <th>Invoice</th><th>Order No</th><th>Part</th><th class="num">Qty</th>
+                                <th>DR No</th><th>PO line</th><th class="num">Unit</th><th class="num">Value / tax</th>
+                                <th>Batch → qty</th><th>Reason for Gap</th><th>Remarks / E-way</th><th></th></tr>
+                        </thead>
+                        <tbody id="lines-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Template preview <span class="hint no-margin" id="preview-sub"></span></div>
+                </div>
+                <div class="table-wrapper preview-wrap">
+                    <table class="data-table bill-table tpl-table">
+                        <thead><tr><th>#</th><th class="red">Record Flag</th><th class="red">DR No.</th><th class="red">Order No.</th><th class="red">PO Line</th><th class="red">Part No.</th><th>Reason for Gap</th><th>Remarks</th>
+                            <th class="red">Invoice No.</th><th class="red">Invoice Date</th><th class="red">Invoice Unit</th><th class="red">Final Value</th><th>CGST</th><th>SGST</th><th>IGST</th>
+                            <th class="red">Transporter</th><th>Batch Appl.</th><th>Batch No.</th><th>Batch Qty</th><th>Batch Consid.</th></tr></thead>
+                        <tbody id="preview-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ HISTORY ============ -->
+        <section class="view-section" id="history-view">
+            <div class="section-header">
+                <div>
+                    <h2>History</h2>
+                    <p class="section-desc">Every template made. Deleting one puts its invoices back in the "Not in a file" list.</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Made on</th><th>File</th><th>Invoices</th><th class="num">Invoices</th><th class="num">Rows</th><th class="num">Value</th><th>DQMS report used</th><th></th></tr></thead>
+                        <tbody id="runs-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ POs ============ -->
+        <section class="view-section" id="pos-view">
+            <div class="section-header">
+                <div>
+                    <h2>POs — line item numbers</h2>
+                    <p class="section-desc">PO Line Item No. is looked up from the invoice's Order No. + Part No. A line item typed by hand always wins.</p>
+                </div>
+                <div class="header-actions">
+                    <a class="btn btn-outline" href="/supp/#pos" title="POs are shared by the whole hub: one upload serves the Supplementary Bill and DQMS">Open all POs (shared)</a>
+                    <label class="btn btn-secondary">Upload PO (.htm)
+                        <input type="file" accept=".htm,.html" multiple style="display:none" onchange="uploadFiles(this.files, true)"></label>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Find a part</div>
+                    <div class="search-box"><input type="text" id="po-search" placeholder="Part no, PO no or name…" oninput="debounced(searchPo, 250)"></div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Part No</th><th>Description</th><th>PO</th><th>Plant</th><th class="num">Line item (PO)</th><th>Typed line item</th></tr></thead>
+                        <tbody id="po-items-tbody"><tr><td colspan="6" class="muted-cell">Type a part number above</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Line items typed by hand</div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>PO</th><th>Part No</th><th class="num">Typed</th><th class="num">In PO</th><th>Updated</th><th></th></tr></thead>
+                        <tbody id="typed-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">POs loaded</div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>PO</th><th>Plant</th><th class="num">Items</th><th>From</th><th>Loaded</th></tr></thead>
+                        <tbody id="pos-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="view-section" id="settings-view">
+            <div class="section-header">
+                <div>
+                    <h2>Settings</h2>
+                    <p class="section-desc">Values put in every invoice row. Press <b>Save</b> after changing.</p>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+            </div>
+            <div class="card">
+                <div class="card-title">Template values</div>
+                <div class="form-grid-4">
+                    <div class="form-group"><label>Transporter*</label><input type="text" id="set-transporter"></div>
+                    <div class="form-group"><label>Batch Details Applicable</label><select id="set-batch-app"><option>YES</option><option>NO</option></select></div>
+                    <div class="form-group"><label>Batch Considerable</label><select id="set-batch-cons"><option>YES</option><option>NO</option></select></div>
+                    <div class="form-group"><label>Invoice Unit* when no DR PDF is loaded</label><select id="set-inv-unit"><option value="packages">No of Packeges on the invoice</option><option value="one">Always 1</option></select></div>
+                    <div class="form-group"><label>Which batch first</label><select id="set-batch-order"><option value="oldest">Oldest batch first</option><option value="newest">Newest batch first</option></select></div>
+                    <div class="form-group span-2"><label>File name ( {date} = invoice date )</label><input type="text" id="set-fname"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Reason for Gap choices</div>
+                <p class="hint">One per line, written exactly as in the portal's drop-down.</p>
+                <textarea id="set-reasons" rows="6" class="reasons-box"></textarea>
+            </div>
+            <div class="card">
+                <div class="card-title">Template columns</div>
+                <p class="hint">The column headings come from TAFE's blank template.csv. If TAFE changes the template, drop the new blank template.csv on the Create page.</p>
+                <div class="chip-list" id="header-chips"></div>
+                <div class="btn-row" style="margin-top:.8rem"><button class="btn btn-danger-text" onclick="resetHeader()">Go back to the columns that came with the app</button></div>
+            </div>
+            <div class="card">
+                <div class="card-title">Clear data</div>
+                <p class="hint">Removes data from this app only.</p>
+                <div class="btn-row">
+                    <button class="btn btn-danger-text" onclick="clearData('invoices')">Clear invoices</button>
+                    <button class="btn btn-danger-text" onclick="clearData('runs')">Clear history</button>
+                    <button class="btn btn-danger-text" onclick="clearData('report')">Clear DQMS report</button>
+                    <button class="btn btn-danger-text" onclick="clearData('typed')">Clear typed line items</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Confirm modal -->
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="js/core/utils.js?v=85f23a84e0"></script>
+    <script src="js/pages/create.js?v=769bb89033"></script>
+    <script src="js/pages/history.js?v=e47d02f5a8"></script>
+    <script src="js/pages/pos.js?v=44a615d0f1"></script>
+    <script src="js/pages/settings.js?v=5878fac683"></script>
+    <script src="js/main.js?v=ac9b9a153f"></script>
+</body>
+
+</html>

@@ -1,0 +1,124 @@
+/* Pop-ups: add/edit forms, confirm dialog */
+
+/* ============ MODALS ============ */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(22, 27, 34, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1.5rem;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.modal-backdrop.active {
+    display: flex;
+}
+
+.modal-card {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 620px;
+    box-shadow: var(--shadow-pop);
+    padding: 1.5rem;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.modal-header h3 {
+    font-family: var(--font);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 1.4rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: var(--transition);
+}
+
+.close-btn:hover {
+    color: var(--ink);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+}
+
+/* ============ CONFIRM MODAL (replaces native confirm()) ============ */
+.confirm-modal-card {
+    max-width: 380px;
+    text-align: center;
+    padding: 1.75rem 1.75rem 1.5rem;
+}
+
+.confirm-modal-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 0.9rem;
+    border-radius: 50%;
+    background: var(--danger-soft);
+    color: var(--danger);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.confirm-modal-card h3 {
+    font-family: var(--font);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 0.5rem;
+}
+
+.confirm-modal-card p {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 1.35rem;
+}
+
+.confirm-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+}
+
+.confirm-modal-actions .btn {
+    width: 100%;
+    justify-content: center;
+}

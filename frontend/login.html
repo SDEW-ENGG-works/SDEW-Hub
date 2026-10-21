@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — SDEW Hub · Login</title>
+    <link rel="icon" href="/assets/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css">
+    <link rel="stylesheet" href="css/30-chep.css">
+</head>
+
+<body class="login-page">
+    <form class="login-card" id="login-form" autocomplete="on">
+        <img class="login-logo" src="assets/sdew-logo.jpg" alt="Sri Durga Engg. Works" width="189" height="40">
+        <div class="login-sub">SDEW Hub — Supplementary Bill · CHEP · DQMS</div>
+        <div class="form-group">
+            <label for="pw">Password</label>
+            <input type="password" id="pw" name="password" autocomplete="current-password" autofocus required>
+        </div>
+        <div class="login-error" id="login-error"></div>
+        <button class="btn btn-primary login-btn" type="submit" id="login-btn">Log in</button>
+    </form>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('login-btn');
+            const err = document.getElementById('login-error');
+            err.textContent = '';
+            btn.disabled = true;
+            btn.textContent = 'Checking…';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: document.getElementById('pw').value }),
+                });
+                if (res.ok) { location.replace('/'); return; }
+                const d = await res.json().catch(() => ({}));
+                err.textContent = d.error || 'Could not log in';
+                document.getElementById('pw').select();
+            } catch (x) {
+                err.textContent = 'Server not reachable';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Log in';
+        });
+    </script>
+</body>
+
+</html>

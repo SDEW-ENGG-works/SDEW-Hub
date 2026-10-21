@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — Supplementary Bill</title>
+    <link rel="icon" href="/assets/favicon.svg?v=fd66ffa491">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css?v=8fef5516b1">
+    <link rel="stylesheet" href="css/03-tables.css?v=39af8da3c3">
+    <link rel="stylesheet" href="css/05-ratecard.css?v=a6e7e5b643">
+    <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
+    <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
+    <link rel="stylesheet" href="/css/hub.css?v=4fe2a943fc">
+    <script src="/js/hubbar.js?v=d4fc5a64ae"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar (same as SDEW Quote) -->
+        <header class="navbar">
+            <div class="nav-brand">
+                <img class="brand-logo" src="assets/sdew-logo.jpg?v=3908bac85d" alt="Sri Durga Engg. Works" width="189" height="40">
+                <span class="brand-divider" aria-hidden="true"></span>
+                <span class="brand-subtitle">Supplementary Bill</span>
+            </div>
+
+            <nav class="nav-links">
+                <button class="nav-btn active" id="nav-bill-btn" onclick="switchView('bill')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    Bill
+                    <span class="badge" id="bill-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-uploads-btn" onclick="switchView('uploads')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Uploads
+                </button>
+                <button class="nav-btn" id="nav-pos-btn" onclick="switchView('pos')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    POs
+                    <span class="badge secondary" id="po-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-grin-btn" onclick="switchView('grin')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                    GRIN
+                    <span class="badge secondary" id="grin-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-review-btn" onclick="switchView('review')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    Review
+                    <span class="badge secondary" id="review-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-settings-btn" onclick="switchView('settings')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </button>
+            </nav>
+        </header>
+
+        <!-- ============ BILL ============ -->
+        <section class="view-section active" id="bill-view">
+            <div class="section-header">
+                <div>
+                    <h2>Supplementary Bill</h2>
+                    <p class="section-desc" id="bill-desc">Upload the POs, GRIN files and Sales Register, then calculate.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="btn-export-pending" onclick="downloadPending()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        GRIN pending list
+                    </button>
+                    <button class="btn btn-secondary" id="btn-export" onclick="downloadExcel()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Excel
+                    </button>
+                    <button class="btn btn-primary" id="btn-run" onclick="runBill()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        Calculate bill
+                    </button>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-icon">₹</div><div class="stat-info"><span class="stat-label">Basic value</span><span class="stat-value" id="st-basic">—</span></div></div>
+                <div class="stat-card"><div class="stat-icon">%</div><div class="stat-info"><span class="stat-label">GST</span><span class="stat-value" id="st-gst">—</span></div></div>
+                <div class="stat-card"><div class="stat-icon">Σ</div><div class="stat-info"><span class="stat-label">Total incl. GST</span><span class="stat-value" id="st-total">—</span></div></div>
+                <div class="stat-card"><div class="stat-icon">#</div><div class="stat-info"><span class="stat-label">Lines billed</span><span class="stat-value" id="st-lines">—</span></div></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="category-pills" id="bill-plant-pills"></div>
+                    <div class="search-box"><input type="text" id="bill-search" placeholder="Search invoice, part, GRIN no…" oninput="debounced(loadBillLines)"></div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table bill-table">
+                        <thead>
+                            <tr>
+                                <th>Voucher Number</th><th>Date</th><th>Order Number</th><th>Item Name</th><th>Description</th>
+                                <th>HSN</th><th class="num">GST %</th><th class="num">Billed Qty</th><th class="num">Rate</th>
+                                <th class="num">Existing Rate</th><th class="num">Reversed Rate</th><th class="num">Diff.Rate</th>
+                                <th class="num">Basic Value</th><th>Grin No</th><th>Grin date</th><th>GRIN check</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bill-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="table-footer">
+                    <span id="bill-total-text"></span>
+                    <div class="pager" id="bill-pager"></div>
+                </div>
+            </div>
+
+            <div class="card" id="missing-po-card" style="display:none;">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    POs still missing — upload these to bill their lines
+                </div>
+                <div class="chip-list" id="missing-po-list"></div>
+            </div>
+        </section>
+
+        <!-- ============ UPLOADS ============ -->
+        <section class="view-section" id="uploads-view">
+            <div class="section-header">
+                <div>
+                    <h2>Uploads</h2>
+                    <p class="section-desc">Drop any file here — POs (.htm), TAFE GRIN Details (.xls) and the Tally Sales Register (.xlsx) are recognised automatically.</p>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-icon">PO</div><div class="stat-info"><span class="stat-label">POs loaded</span><span class="stat-value" id="up-pos">0</span><span class="stat-sub" id="up-pos-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">GR</div><div class="stat-info"><span class="stat-label">GRIN lines</span><span class="stat-value" id="up-grin">0</span><span class="stat-sub" id="up-grin-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">SR</div><div class="stat-info"><span class="stat-label">Sales lines</span><span class="stat-value" id="up-sales">0</span><span class="stat-sub" id="up-sales-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">F</div><div class="stat-info"><span class="stat-label">Files uploaded</span><span class="stat-value" id="up-files">0</span></div></div>
+            </div>
+
+            <div class="card">
+                <label class="dropzone" id="dropzone">
+                    <input type="file" id="file-input" multiple accept=".htm,.html,.xls,.xlsx" onchange="uploadFiles(this.files)">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <strong>Drop files here or click to choose</strong>
+                    <span>Many files at once is fine — e.g. all 48 PO files, or a month of GRIN exports</span>
+                </label>
+                <div id="upload-results" class="upload-results"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Upload history</div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>When</th><th>Type</th><th>File</th><th class="num">Rows</th><th>Details</th></tr></thead>
+                        <tbody id="files-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ POs ============ -->
+        <section class="view-section" id="pos-view">
+            <div class="section-header">
+                <div>
+                    <h2>Purchase Orders</h2>
+                    <p class="section-desc">Prices by date from every uploaded PO. Uploading a PO again replaces its prices. Plant comes from the PO's Bill-to address.</p>
+                </div>
+                <div class="search-box"><input type="text" id="po-search" placeholder="Search PO or plant…" oninput="renderPos()"></div>
+            </div>
+            <div class="card">
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>PO No</th><th>Plant</th><th>PO Date</th><th>Valid Till</th><th class="num">Parts</th><th class="num">Revised parts</th><th class="num">Bill lines</th><th>Uploaded</th><th></th></tr></thead>
+                        <tbody id="pos-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ GRIN ============ -->
+        <section class="view-section" id="grin-view">
+            <div class="section-header">
+                <div>
+                    <h2>GRIN</h2>
+                    <p class="section-desc">TAFE GRIN details — fetched from TAFE Channel or uploaded by hand. The same GRIN line is never counted twice.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        Fetch from TAFE Channel (wb01.tafechannel.com)
+                    </div>
+                    <span class="status-badge" id="portal-status">—</span>
+                </div>
+                <div class="form-grid-4 align-end">
+                    <div class="form-group"><label>From date</label><input type="date" id="sync-from"></div>
+                    <div class="form-group"><label>To date</label><input type="date" id="sync-to"></div>
+                    <div class="form-group"><label class="check"><input type="checkbox" id="sync-headed"> Show the browser</label></div>
+                    <div class="form-group"><button class="btn btn-primary" id="btn-sync" onclick="startSync()">Fetch GRIN</button></div>
+                </div>
+                <p class="hint">Fetches one month at a time (TAFE allows 31 days per fetch). Last 45 days are fetched again so accepted / rejected qty filled in later by TAFE are picked up.</p>
+                <pre class="log-box" id="sync-log" style="display:none;"></pre>
+            </div>
+
+            <div class="card">
+                <div class="card-title">GRIN loaded, by month</div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Month</th><th class="num">GRIN lines</th><th class="num">GRINs</th><th class="num">From portal</th><th class="num">Uploaded</th><th class="num">Inspection open</th><th>Last updated</th></tr></thead>
+                        <tbody id="grin-months-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Find a GRIN</div>
+                    <div class="search-box"><input type="text" id="grin-search" placeholder="GRIN no, invoice, part or PO…" oninput="debounced(searchGrin)"></div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>GRIN No</th><th>GRIN Date</th><th>Invoice</th><th>Plant</th><th>PO No</th><th>Part No</th><th>Description</th><th class="num">GRIN Qty</th><th class="num">Accepted</th><th class="num">Rejected</th><th>Source</th></tr></thead>
+                        <tbody id="grin-tbody"><tr><td colspan="11" class="muted-cell">Type to search</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ REVIEW ============ -->
+        <section class="view-section" id="review-view">
+            <div class="section-header">
+                <div>
+                    <h2>Review</h2>
+                    <p class="section-desc">Sales lines not in the bill, with the reason — GRN pending, PO not uploaded, already billed at the new rate…</p>
+                </div>
+                <div class="filter-group">
+                    <select id="review-cat" onchange="loadReview(0)">
+                        <option value="not-bill">All not billed</option>
+                        <option value="GRN pending">GRN pending</option>
+                        <option value="Rate pending">Rate pending</option>
+                        <option value="Old-date invoice">Old-date invoices</option>
+                        <option value="Excluded">Excluded</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="category-pills" id="review-plant-pills"></div>
+                    <div class="search-box"><input type="text" id="review-search" placeholder="Search invoice, part, PO, reason…" oninput="debounced(() => loadReview(0))"></div>
+                </div>
+                <div class="chip-list" id="review-reasons"></div>
+                <div class="table-wrapper">
+                    <table class="data-table bill-table">
+                        <thead>
+                            <tr><th>Plant</th><th>Category</th><th>Reason</th><th>Voucher</th><th>Date</th><th>PO</th><th>Item Name</th><th>Description</th>
+                                <th class="num">Qty</th><th class="num">Rate</th><th class="num">Existing</th><th class="num">Reversed</th><th class="num">Value</th><th>Grin No</th><th>Remarks</th></tr>
+                        </thead>
+                        <tbody id="review-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="table-footer">
+                    <span id="review-total-text"></span>
+                    <div class="pager" id="review-pager"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="view-section" id="settings-view">
+            <div class="section-header">
+                <div>
+                    <h2>Settings</h2>
+                    <p class="section-desc">Price revision dates, fixed rates and plant names. Press <b>Save</b>, then <b>Calculate bill</b> again.</p>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Price revision</div>
+                <div class="form-grid-4">
+                    <div class="form-group"><label>Existing Rate = PO price on</label><input type="date" id="set-old-date"></div>
+                    <div class="form-group"><label>Reversed Rate = PO price on</label><input type="date" id="set-new-date"></div>
+                    <div class="form-group">
+                        <label>Diff.Rate</label>
+                        <select id="set-diff-basis">
+                            <option value="po">Reversed Rate − Existing Rate (PO)</option>
+                            <option value="billed">Reversed Rate − billed Rate (Tally)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Rules</label>
+                        <label class="check"><input type="checkbox" id="set-remove-billed"> Leave out lines already billed at the Reversed Rate</label>
+                        <label class="check"><input type="checkbox" id="set-exclude-old"> Keep invoices dated on the old-rate day aside</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Fixed rates (used for every plant)</div>
+                    <button class="btn btn-outline btn-sm" onclick="addOverride()">+ Add part</button>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Part No</th><th>Existing Rate (optional)</th><th>Reversed Rate</th><th>Note</th><th></th></tr></thead>
+                        <tbody id="overrides-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Part number corrections (Tally part typed wrong)</div>
+                    <button class="btn btn-outline btn-sm" onclick="addCorrection()">+ Add</button>
+                </div>
+                <p class="hint">The Tally part is replaced by the correct PO part before the bill is calculated. Leave Plant empty for every plant.</p>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Plant</th><th>Tally part</th><th>Correct part</th><th>Note</th><th></th></tr></thead>
+                        <tbody id="corrections-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Revised rate pending from TAFE</div>
+                <p class="hint">PO numbers (comma separated) whose new rate is not received yet. Their unbilled lines go to the GRIN pending list as "Rate pending" instead of Excluded.</p>
+                <input type="text" id="set-rate-pending" placeholder="e.g. 1010015475">
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Plants</div>
+                    <button class="btn btn-outline btn-sm" onclick="addPlant()">+ Add plant</button>
+                </div>
+                <p class="hint">Party name must match Tally exactly. Bill-to word is looked for in the PO address to know its plant.</p>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Plant</th><th>Tally party name</th><th>TAFE plant code</th><th>Main PO</th><th>PO Bill-to word</th><th></th></tr></thead>
+                        <tbody id="plants-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">TAFE Channel login</div>
+                <p class="hint" id="tafe-login-status"></p>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Clear data</div>
+                <p class="hint">Removes the data from this app only (uploaded files stay in the data folder).</p>
+                <div class="btn-row">
+                    <button class="btn btn-danger-text" onclick="clearData('sales')">Clear sales lines</button>
+                    <button class="btn btn-danger-text" onclick="clearData('grin')">Clear GRIN lines</button>
+                    <button class="btn btn-danger-text" onclick="clearData('pos')">Clear POs</button>
+                    <button class="btn btn-danger-text" onclick="clearData('runs')">Clear bills</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- PO detail modal -->
+    <div class="modal-backdrop" id="po-modal" onclick="if (event.target === this) closeModal('po-modal')">
+        <div class="modal-card wide">
+            <div class="modal-header">
+                <h3 id="po-modal-title">PO</h3>
+                <button class="close-btn" onclick="closeModal('po-modal')">&times;</button>
+            </div>
+            <p class="section-desc" id="po-modal-sub"></p>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead><tr><th>Item</th><th>Part No</th><th>Description</th><th class="num">Existing Rate</th><th class="num">Reversed Rate</th><th class="num">Diff</th><th>Price blocks in PO</th></tr></thead>
+                    <tbody id="po-items-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm modal -->
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="js/core/utils.js?v=693527134b"></script>
+    <script src="js/pages/bill.js?v=ab682b94bf"></script>
+    <script src="js/pages/uploads.js?v=8843e794ff"></script>
+    <script src="js/pages/pos.js?v=daae86bbe6"></script>
+    <script src="js/pages/grin.js?v=683d41129a"></script>
+    <script src="js/pages/review.js?v=e283146586"></script>
+    <script src="js/pages/settings.js?v=d2228cf928"></script>
+    <script src="js/main.js?v=62eff90974"></script>
+</body>
+
+</html>

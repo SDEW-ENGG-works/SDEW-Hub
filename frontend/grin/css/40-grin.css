@@ -1,0 +1,98 @@
+/* GRIN & Payments page - builds on the Supplementary Bill styles (01/03/05/06/20). */
+:root {
+    --st-ng: #b42318;   --st-ng-soft: #fdeceb;
+    --st-short: #b54708; --st-short-soft: #fdf0e3;
+    --st-od: #9a6300;   --st-od-soft: #fbf3e2;
+    --st-aw: #24548f;   --st-aw-soft: #eaf1fb;
+    --st-wait: #667085; --st-wait-soft: #f0f2f5;
+    --st-debit: #6941c6; --st-debit-soft: #f2eefb;
+    --st-paid: #1c7a4a; --st-paid-soft: #eaf6ef;
+}
+
+.status-cards { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
+@media (max-width: 1250px) { .status-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .status-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.st-card {
+    background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--line-strong));
+    border-radius: var(--radius-md); padding: 0.65rem 0.8rem; cursor: pointer; text-align: left;
+    font-family: var(--font); box-shadow: var(--shadow-card); transition: var(--transition);
+}
+.st-card:hover { border-color: var(--c); }
+.st-card.active { background: var(--soft, var(--accent-soft)); border-color: var(--c); }
+.st-card .k { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.st-card .v { font-size: 1.35rem; font-weight: 700; color: var(--ink); line-height: 1.3; font-variant-numeric: tabular-nums; }
+.st-card .s { font-size: 0.74rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.st-card .h { font-size: 0.68rem; color: var(--dim); margin-top: 0.15rem; }
+
+.st { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; white-space: nowrap;
+      background: var(--soft); color: var(--c); }
+.st-ng { --c: var(--st-ng); --soft: var(--st-ng-soft); }
+.st-short { --c: var(--st-short); --soft: var(--st-short-soft); }
+.st-od { --c: var(--st-od); --soft: var(--st-od-soft); }
+.st-aw { --c: var(--st-aw); --soft: var(--st-aw-soft); }
+.st-wait { --c: var(--st-wait); --soft: var(--st-wait-soft); }
+.st-debit { --c: var(--st-debit); --soft: var(--st-debit-soft); }
+.st-paid { --c: var(--st-paid); --soft: var(--st-paid-soft); }
+
+.fresh { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); margin: -0.3rem 0 0.9rem; }
+.fresh b { color: var(--ink); }
+.fresh .old { color: var(--danger); font-weight: 600; }
+.banner { padding: 0.65rem 0.9rem; border-radius: var(--radius-md); font-size: 0.82rem; margin-bottom: 0.9rem;
+          background: var(--warning-soft); color: var(--warning); border: 1px solid #ecd9ae; }
+.banner.danger { background: var(--danger-soft); color: var(--danger); border-color: #f1c8c3; }
+.banner.info { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft-line); }
+.banner a { color: inherit; font-weight: 600; }
+
+.grin-table td { padding: 0.45rem 0.65rem; font-size: 0.79rem; white-space: nowrap; vertical-align: top; }
+.grin-table th { padding: 0.5rem 0.65rem; }
+.grin-table td.parts { white-space: normal; min-width: 170px; max-width: 260px; color: var(--muted); }
+.grin-table td.checks { white-space: normal; min-width: 180px; max-width: 300px; font-size: 0.74rem; color: var(--warning); }
+.grin-table .sub { display: block; font-size: 0.7rem; color: var(--dim); }
+.grin-table tr.held td { opacity: 0.6; }
+.tag { display: inline-block; font-size: 0.66rem; font-weight: 700; padding: 0.02rem 0.35rem; border-radius: 4px;
+       background: var(--line); color: var(--muted); margin-left: 0.25rem; vertical-align: 1px; }
+.tag.hold { background: var(--st-debit-soft); color: var(--st-debit); }
+.tag.rem { background: var(--st-ng-soft); color: var(--st-ng); }
+
+.toolbar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.toolbar label { font-size: 0.75rem; color: var(--muted); }
+.toolbar input[type=date] { width: auto; }
+
+/* invoice detail */
+.trail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem; margin-bottom: 1rem; }
+.trail .step { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.7rem 0.8rem; background: var(--card-alt); }
+.trail .step.ok { border-color: #b7dfc7; background: var(--st-paid-soft); }
+.trail .step.bad { border-color: #f1c8c3; background: var(--st-ng-soft); }
+.trail .step .t { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; }
+.trail .step .v { font-size: 0.95rem; font-weight: 700; color: var(--ink); margin: 0.15rem 0; }
+.trail .step .d { font-size: 0.76rem; color: var(--muted); }
+.mini-title { font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0.9rem 0 0.4rem; }
+
+/* mails */
+.draft { border: 1px solid var(--line); border-radius: var(--radius-md); margin-bottom: 0.8rem; background: var(--card); }
+.draft-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.7rem 0.9rem;
+              border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.draft-head .who { font-weight: 600; color: var(--ink); }
+.draft-head .addr { font-size: 0.76rem; color: var(--muted); }
+.draft-head .addr.bad { color: var(--danger); font-weight: 600; }
+.draft .table-wrapper { margin: 0; }
+.draft.sent { opacity: 0.55; }
+.mail-preview { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 1rem; background: #fff; overflow: auto; max-height: 60vh; }
+.mail-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.7rem; line-height: 1.6; }
+.mail-meta b { color: var(--ink); }
+
+/* sources */
+.src-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 1000px) { .src-grid { grid-template-columns: 1fr; } }
+.kv { display: grid; grid-template-columns: 150px 1fr; gap: 0.25rem 0.8rem; font-size: 0.8rem; margin: 0.4rem 0 0.8rem; }
+.kv dt { color: var(--muted); }
+.kv dd { color: var(--ink); font-weight: 500; }
+.step-no { display: inline-flex; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--accent); color: #fff;
+           font-size: 0.72rem; font-weight: 700; align-items: center; justify-content: center; margin-right: 0.45rem; }
+.chips-inline { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0.4rem 0; }
+.chips-inline .chip { cursor: default; }
+textarea { width: 100%; font-family: var(--font); font-size: 0.82rem; padding: 0.5rem 0.65rem; border: 1px solid var(--line-strong);
+           border-radius: var(--radius-sm); resize: vertical; }
+.edit-table input, .edit-table select { width: 100%; min-width: 90px; }
+code.env { display: block; white-space: pre; background: var(--card-alt); border: 1px solid var(--line); padding: 0.6rem 0.8rem;
+           border-radius: var(--radius-sm); font-size: 0.76rem; margin: 0.4rem 0; }

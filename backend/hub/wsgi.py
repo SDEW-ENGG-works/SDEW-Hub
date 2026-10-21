@@ -1,0 +1,74 @@
+"""WSGI app for Vercel (also runs anywhere WSGI runs). Same pages and /api routes as local_server.py."""
+import mimetypes
+import os
+
+from . import auth, config
+from .assets import index_page
+from .http import Request, dispatch
+
+LONG_CACHE = "public, max-age=31536000, immutable"
+NO_CACHE = "no-store, no-cache, must-revalidate, max-age=0"
+
+
+def _static(path):
+    rel = path.lstrip("/")
+    full = os.path.normpath(os.path.join(config.FRONTEND_DIR, rel))
+    if not full.startswith(os.path.normpath(config.FRONTEND_DIR) + os.sep) or not os.path.isfile(full):
+        return None
+    with open(full, "rb") as fh:
+        body = fh.read()
+    ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+    if ctype.startswith("text/") or ctype in ("application/javascript",):
+        ctype += "; charset=utf-8"
+    return body, ctype
+
+
+def app(environ, start_response):
+    method = environ.get("REQUEST_METHOD", "GET")
+    path = environ.get("PATH_INFO", "/") or "/"
+    query = environ.get("QUERY_STRING", "")
+
+    if not auth.is_public(path) and not auth.authorised(environ.get("HTTP_COOKIE")):
+        if path.startswith("/api/"):
+            body = b'{"error": "Please log in", "login": true}'
+            start_response("401 Unauthorized", [("Content-Type", "application/json"),
+                                                ("Content-Length", str(len(body)))])
+            return [body]
+        start_response("302 Found", [("Location", "/login.html"), ("Content-Length", "0")])
+        return [b""]
+
+    if path.startswith("/api/"):
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or 0)
+        except ValueError:
+            length = 0
+        body = environ["wsgi.input"].read(length) if length else b""
+        resp = dispatch(Request(method, path + ("?" + query if query else ""), body))
+        try:  # Turso: send any writes still queued
+            from .db import get_db
+            get_db().commit()
+        except Exception:  # noqa: BLE001
+            pass
+        headers = [("Content-Type", resp.content_type), ("Content-Length", str(len(resp.body))),
+                   ("Cache-Control", NO_CACHE)] + list(resp.headers.items())
+        start_response(f"{resp.status} {'OK' if resp.status < 400 else 'Error'}", headers)
+        return [resp.body]
+
+    if path in ("/supp", "/chep", "/dqms", "/grin"):
+        start_response("301 Moved", [("Location", path + "/"), ("Content-Length", "0")])
+        return [b""]
+    page = index_page(path)
+    if page:
+        html = page[0].encode("utf-8")
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(html))),
+                                  ("Cache-Control", "no-cache")])
+        return [html]
+
+    found = _static(path)
+    if not found:
+        start_response("404 Not Found", [("Content-Type", "text/plain")])
+        return [b"Not found"]
+    body, ctype = found
+    cache = LONG_CACHE if "v=" in query else "no-cache"
+    start_response("200 OK", [("Content-Type", ctype), ("Content-Length", str(len(body))), ("Cache-Control", cache)])
+    return [body]

@@ -1,0 +1,167 @@
+/* Supplementary Bill pages. Colours, cards, buttons, tables come from the
+   SDEW Quote files (01-base, 03-tables, 05-ratecard, 06-modals). */
+
+/* ---- pills (same as SDEW Quote catalog) ---- */
+.category-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.cat-pill {
+    padding: 0.3rem 0.75rem;
+    background: var(--card-alt);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: var(--font);
+}
+.cat-pill:hover { color: var(--ink); border-color: var(--line-strong); }
+.cat-pill.active { background: var(--accent-soft); border-color: var(--accent-soft-line); color: var(--accent); font-weight: 600; }
+.cat-pill .pill-count { margin-left: 0.35rem; color: var(--dim); font-weight: 600; }
+.cat-pill.active .pill-count { color: var(--accent); }
+
+/* ---- header ---- */
+.header-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.loading { opacity: 0.7; pointer-events: none; }
+
+.search-box input { width: 280px; }
+
+.stat-icon { font-weight: 700; font-size: 0.85rem; }
+.stat-sub { font-size: 0.72rem; color: var(--dim); }
+
+/* ---- tables ---- */
+.data-table th.num, .data-table td.num { text-align: right; white-space: nowrap; }
+.bill-table td { padding: 0.5rem 0.7rem; font-size: 0.8rem; white-space: nowrap; }
+.bill-table th { padding: 0.55rem 0.7rem; }
+.bill-table td.wrap { white-space: normal; min-width: 180px; }
+.data-table td.strong { font-weight: 700; color: var(--ink); }
+.data-table tr.clickable { cursor: pointer; }
+.muted-cell { color: var(--dim); text-align: center; padding: 1.5rem !important; }
+.mono { font-variant-numeric: tabular-nums; }
+.yellow { background: var(--warning-soft); }
+
+.table-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.8rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.table-footer b { color: var(--ink); }
+.pager { display: flex; gap: 0.35rem; align-items: center; }
+
+/* status badges extra colours */
+.status-badge.warn { background: var(--warning-soft); color: var(--warning); }
+.status-badge.muted { background: var(--line); color: var(--muted); }
+
+/* ---- upload ---- */
+.dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 2.2rem 1rem;
+    border: 1.5px dashed var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--card-alt);
+    color: var(--muted);
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.dropzone strong { color: var(--ink); font-size: 0.92rem; }
+.dropzone span { font-size: 0.8rem; }
+.dropzone input { display: none; }
+
+.upload-results { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.upload-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.82rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #fff;
+}
+.upload-row .file { font-weight: 600; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+.upload-row .msg { color: var(--muted); }
+.upload-row.err .msg { color: var(--danger); }
+
+/* ---- chips (missing POs, reasons) ---- */
+.chip-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.9rem; }
+.chip {
+    font-size: 0.76rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: var(--card-alt);
+    color: var(--text);
+    cursor: default;
+}
+.chip b { color: var(--ink); }
+.chip.click { cursor: pointer; }
+.chip.click:hover { border-color: var(--accent-soft-line); background: var(--accent-soft); }
+
+/* ---- forms ---- */
+.align-end { align-items: end; }
+.check { display: flex !important; align-items: center; gap: 0.45rem; font-weight: 500 !important; color: var(--text) !important; font-size: 0.82rem !important; cursor: pointer; }
+.check input { width: auto; }
+.hint { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.8rem; }
+.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+input[type="date"] {
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.7rem;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.87rem;
+}
+.data-table td input[type="text"], .data-table td input[type="number"] { padding: 0.35rem 0.5rem; font-size: 0.82rem; }
+
+.log-box {
+    margin-top: 0.6rem;
+    background: var(--ink);
+    color: #d0d5dd;
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 0.9rem;
+    font-size: 0.76rem;
+    max-height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+.modal-card.wide { max-width: 1100px; }
+
+/* ---- toasts (same as SDEW Quote) ---- */
+#toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 2000; }
+.toast {
+    background: #ffffff; color: var(--ink); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    padding: 0.7rem 1.1rem; border-radius: var(--radius-sm); box-shadow: var(--shadow-pop);
+    font-size: 0.83rem; font-weight: 500; display: flex; align-items: center; gap: 0.55rem;
+    animation: slideInRight 0.2s ease-out; max-width: 380px;
+}
+.toast.success { border-left-color: var(--success); }
+.toast.danger { border-left-color: var(--danger); }
+.toast.info { border-left-color: var(--accent); }
+@keyframes slideInRight { from { transform: translateX(16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ---- small screens ---- */
+@media (max-width: 1100px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .form-grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px) {
+    .navbar { flex-wrap: wrap; gap: 0.75rem; }
+    .nav-links { order: 3; width: 100%; overflow-x: auto; }
+    .section-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    .search-box input { width: 100%; }
+    .form-grid-4, .form-grid-2 { grid-template-columns: 1fr; }
+}

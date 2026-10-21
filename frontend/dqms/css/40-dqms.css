@@ -1,0 +1,50 @@
+/* DQMS Upload pages. Everything else comes from the SDEW Quote / Supplementary Bill / CHEP files. */
+
+.report-strip { margin-top: 0.8rem; font-size: 0.82rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.report-strip b { color: var(--ink); }
+
+.inv-table td { vertical-align: top; }
+.inv-table tr.inv-first td { border-top: 1px solid var(--line-strong); }
+.data-table tr.row-off td { color: var(--dim); background: transparent; }
+.data-table tr.row-off .cell-input { opacity: 0.6; }
+
+.cell-input {
+    padding: 0.28rem 0.4rem !important; font-size: 0.8rem !important;
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fff;
+    font-family: var(--font); color: var(--text);
+}
+.cell-input.need { border-color: var(--danger) !important; background: var(--danger-soft); }
+.cell-input.typed { border-color: var(--warning) !important; background: var(--warning-soft); }
+.w-dr { width: 92px; }
+.w-line { width: 58px; text-align: right; }
+.w-unit { width: 46px; text-align: right; }
+.w-reason { width: 140px; }
+.w-rem { width: 100px; }
+.click-edit { cursor: pointer; border-bottom: 1px dashed var(--line-strong); }
+
+.batch-line { font-size: 0.78rem; white-space: nowrap; line-height: 1.35; }
+.batch-line + .batch-line { margin-top: 0.3rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; }
+.muted { color: var(--muted); }
+.small { font-size: 0.78rem; }
+
+.check-list { margin: 0; padding-left: 1rem; font-size: 0.76rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.inv-table tr.check-row td { padding-top: 0 !important; border-top: none !important; }
+.inv-table tr.check-row + tr td, .inv-table tr.inv-first td { border-top: 1px solid var(--line-strong); }
+.nowrap { white-space: nowrap; }
+.inv-table .note { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-line .mono { font-size: 0.74rem; }
+.bad-text { color: var(--danger); font-weight: 600; }
+.warn-text { color: var(--warning); }
+.ok-text { color: var(--success); }
+.portal-text { color: #7a3fb0; }
+
+.tpl-table tr.inv-row td { border-top: 1px solid var(--line-strong); font-weight: 500; }
+.tpl-table tr.batch-row td { color: var(--muted); }
+
+.reasons-box {
+    width: 100%; max-width: 420px; font-family: var(--font); font-size: 0.85rem; padding: 0.5rem 0.65rem;
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+}
+
+.hold-text { color: #1d5fa8; font-weight: 600; }
