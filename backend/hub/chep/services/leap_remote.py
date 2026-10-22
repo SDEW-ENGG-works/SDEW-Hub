@@ -84,8 +84,11 @@ def remote_available():
     a = agent_info()
     if a["online"] or runner() == "cloud":
         return True, ""
+    from . import leap_cloud
+    cloud_ok, cloud_why = leap_cloud.usable()
+    extra = "" if cloud_ok or not config.ON_VERCEL else f" (The cloud browser can't be used: {cloud_why}.)"
     return True, (f"The SDEW PC is not connected right now (last seen: {a['seen']}). You can still press "
-                  "Upload - it starts as soon as the SDEW Hub app (start.bat) is running on the PC.")
+                  "Upload - it starts as soon as the SDEW Hub app (start.bat) is running on the PC." + extra)
 
 
 def _active(j):
