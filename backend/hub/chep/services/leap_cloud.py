@@ -19,6 +19,8 @@ online, else the sandbox) | cloud | pc.
 import io
 import json
 import os
+import subprocess
+import sys
 import tarfile
 import time
 import traceback
@@ -32,33 +34,15 @@ PASS_ENV = ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "CHEP_TURSO_DATABASE_URL",
             "LEAP_USER", "LEAP_PASS", "LEAP_URL", "LEAP_VERIFY_GAP")
 
 RUN_SH = r"""#!/bin/bash
-# started by the SDEW Hub website: install once, then run one LEAP job
-set -e
+# started by the website: unpack the code, make sure python3 exists, then hand over to Python
+# (Python does the one-time install of Playwright + Chromium and reports every step to the website)
 cd /vercel/sandbox
-log() { echo "[setup] $*"; }
-if [ ! -f .ready ]; then
-  log "first run - installing Python packages and Chromium"
-  if ! command -v python3 >/dev/null || ! python3 -m venv --help >/dev/null 2>&1; then
-    (sudo apt-get update -qq && sudo apt-get install -y -qq python3 python3-venv python3-pip) || \
-    sudo dnf install -y -q python3 python3-pip
-  fi
-  python3 -m venv venv
-  venv/bin/pip install -q --upgrade pip
-  venv/bin/pip install -q playwright openpyxl xlrd
-  if command -v apt-get >/dev/null; then
-    sudo venv/bin/python -m playwright install-deps chromium
-  else
-    sudo dnf install -y -q nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libXcomposite \
-      libXdamage libXrandr libXfixes libXext libX11 libxcb mesa-libgbm pango cairo alsa-lib || true
-  fi
-  venv/bin/python -m playwright install chromium
-  touch .ready
-  log "installed"
+rm -rf pkg && mkdir -p pkg data && tar xzf hub.tgz -C pkg
+if ! command -v python3 >/dev/null; then
+  (sudo apt-get update -qq && sudo apt-get install -y -qq python3 python3-venv) || sudo dnf install -y -q python3
 fi
-rm -rf app && mkdir -p app data
-tar xzf hub.tgz -C app
-cd app
-exec ../venv/bin/python -u -m hub.chep.leap_job "$1"
+cd pkg
+exec python3 -u -m hub.chep.leap_job "$1" >> /vercel/sandbox/job.log 2>&1
 """
 
 
@@ -109,21 +93,94 @@ def launch(job_id):
     penv.update(USE_CLOUD_DB="1", HUB_DATA_DIR=WORKDIR + "/data", PYTHONUNBUFFERED="1", HUB_FORCE_IST="1",
                 LEAP_SANDBOX="1")
     try:
-        box = vsb.get_or_create_sandbox(name=SANDBOX_NAME, persistent=True,
-                                        execution_time_limit=timedelta(minutes=50))
+        box, _created = vsb.get_or_create_sandbox(name=SANDBOX_NAME, persistent=True,
+                                                  execution_time_limit=timedelta(minutes=50))
         try:
             box.extend_execution_time_limit(timedelta(minutes=45))
         except Exception:  # noqa: BLE001 - a fresh sandbox already has its 50 minutes
             pass
         box.fs.write_bytes(WORKDIR + "/run.sh", RUN_SH.encode(), mode=0o755)
         box.fs.write_bytes(WORKDIR + "/hub.tgz", _hub_tarball())
-        box.create_process("bash", [WORKDIR + "/run.sh", str(int(job_id))], cwd=WORKDIR, env=penv)
+        box.create_process("bash", [WORKDIR + "/run.sh", str(int(job_id))], cwd=WORKDIR, env=penv,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         raise RuntimeError(f"The cloud browser could not be started: {e}")
 
 
 # ---------------------------------------------------------------- sandbox side
+VENV = WORKDIR + "/venv"
+READY = WORKDIR + "/.ready"
+
+
+def _setup_state(job_id, steps, error=None):
+    from ..db import get_db
+    st = dict(active=error is None, phase="error" if error else "running", runner="cloud", steps=steps,
+              log=[], parts=[], current=None, verify=None)
+    if error:
+        st["error"] = error
+    con = get_db()
+    con.execute("UPDATE leap_jobs SET status=?, state=?, updated_ts=? WHERE id=?",
+                ("error" if error else "starting",
+                 json.dumps(dict(st, file_name=_file_name(job_id))), time.time(), job_id))
+    con.commit()
+
+
+def _file_name(job_id):
+    from ..db import one
+    j = one("SELECT state FROM leap_jobs WHERE id=?", (job_id,))
+    try:
+        return json.loads(j["state"] or "{}").get("file_name", "") if j else ""
+    except ValueError:
+        return ""
+
+
+def _install(job_id):
+    """One-time install (system Python): venv, Playwright, Chromium. Each step shows on the website."""
+    plan = [
+        ("venv", "Make a Python environment", [sys.executable, "-m", "venv", VENV]),
+        ("pip", "Install Playwright", [VENV + "/bin/pip", "install", "-q", "playwright", "openpyxl", "xlrd"]),
+        ("deps", "Install Chromium's system libraries",
+         ["sudo", VENV + "/bin/python", "-m", "playwright", "install-deps", "chromium"]),
+        ("chromium", "Download Chromium", [VENV + "/bin/python", "-m", "playwright", "install", "chromium"]),
+    ]
+    steps = [dict(key=k, label=l, status="todo", detail="") for k, l, _ in plan]
+    steps.insert(0, dict(key="box", label="Start the cloud browser (Vercel)", status="done",
+                         detail="First run - installing (about 3 minutes, only once)"))
+    for i, (key, label, cmd) in enumerate(plan, start=1):
+        steps[i]["status"] = "doing"
+        _setup_state(job_id, steps)
+        t0 = time.time()
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0 and key == "venv":   # Debian/Ubuntu without python3-venv
+            subprocess.run("sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv || "
+                           "sudo dnf install -y -q python3-pip", shell=True)
+            r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0 and key == "deps":   # not Debian/Ubuntu: try the dnf package names
+            r = subprocess.run("sudo dnf install -y -q nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon "
+                               "libXcomposite libXdamage libXrandr libXfixes libXext libX11 libxcb mesa-libgbm "
+                               "pango cairo alsa-lib", shell=True, capture_output=True, text=True)
+        if r.returncode != 0:
+            tail = ((r.stderr or "") + (r.stdout or "")).strip()[-600:]
+            steps[i].update(status="error", detail=tail)
+            _setup_state(job_id, steps, error=f"{label} failed: {tail[-300:]}")
+            return False
+        steps[i].update(status="done", detail=f"{int(time.time() - t0)} s")
+    open(READY, "w").close()
+    _setup_state(job_id, steps)
+    return True
+
+
+def main(job_id):
+    """Entry point in the sandbox. System Python: install once, then restart in the venv."""
+    if not os.environ.get("LEAP_IN_VENV"):
+        if not os.path.exists(READY) and not _install(job_id):
+            return 1
+        os.environ["LEAP_IN_VENV"] = "1"
+        os.execv(VENV + "/bin/python", [VENV + "/bin/python", "-u", "-m", "hub.chep.leap_job", str(job_id)])
+    return run_job(job_id)
+
+
 def run_job(job_id):
     """Runs inside the sandbox: claim the job, do it, mirror it to leap_jobs, exit."""
     from ..db import get_db, one

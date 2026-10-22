@@ -135,7 +135,11 @@ def remote_snapshot():
         return dict(active=False, phase="idle")
     st = json.loads(j["state"] or "{}")
     age = time.time() - float(j["updated_ts"] or 0)
-    if j["status"] == "starting":
+    if j["status"] == "starting" and st.get("steps"):
+        st["phase"] = "running"     # the cloud browser is installing - its own steps are shown
+        if time.time() - float(j["updated_ts"] or 0) > 600:
+            st.update(phase="error", error="The cloud browser stopped answering while installing.")
+    elif j["status"] == "starting":
         st = dict(active=True, phase="running", mode=j["mode"], file_name=st.get("file_name", ""),
                   run_id=j["run_id"], runner="cloud",
                   steps=[dict(key="pc", label="Start the cloud browser (Vercel)", status="doing",
