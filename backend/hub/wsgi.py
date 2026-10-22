@@ -38,6 +38,9 @@ def app(environ, start_response):
         return [b""]
 
     if path.startswith("/api/"):
+        oidc = environ.get("HTTP_X_VERCEL_OIDC_TOKEN")
+        if oidc:  # lets this request start a Vercel Sandbox (cloud browser for LEAP) without a token
+            os.environ["VERCEL_OIDC_TOKEN"] = oidc
         try:
             length = int(environ.get("CONTENT_LENGTH") or 0)
         except ValueError:

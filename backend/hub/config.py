@@ -6,6 +6,9 @@ BACKEND_DIR = os.path.dirname(HUB_DIR)
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)                     # the SDEWHub folder
 
 ON_VERCEL = bool(os.environ.get("VERCEL"))
+# Inside the Vercel Sandbox that runs the LEAP upload this is a normal machine, not the website.
+if os.environ.get("LEAP_SANDBOX"):
+    ON_VERCEL = False
 
 # All times the hub writes (uploaded at, fetched at, report time, mail sent ...) are India time.
 # Vercel's servers run on UTC, which showed every time 5 h 30 min early. "IST-5:30" is a fixed offset,
@@ -36,7 +39,8 @@ def upload_dir(module):
 ENV_KEYS = ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "APP_PASSWORD", "LEAP_USER", "LEAP_PASS",
             "TAFE_USER", "TAFE_PASS", "TAFE_URL", "USE_CLOUD_DB", "HUB_PORT",
             "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_FROM", "SMTP_SSL",
-            "CHEP_TURSO_DATABASE_URL", "CHEP_TURSO_AUTH_TOKEN", "DQMS_TURSO_DATABASE_URL", "DQMS_TURSO_AUTH_TOKEN")
+            "CHEP_TURSO_DATABASE_URL", "CHEP_TURSO_AUTH_TOKEN", "DQMS_TURSO_DATABASE_URL", "DQMS_TURSO_AUTH_TOKEN",
+            "LEAP_RUNNER")
 
 
 def read_env():

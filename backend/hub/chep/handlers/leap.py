@@ -18,7 +18,8 @@ def _remote():
 def status(req):
     if _remote():
         ok, why = remote.remote_available()
-        return dict(available=ok, reason=why, remote=True, agent=remote.agent_info(), state=remote.remote_snapshot())
+        return dict(available=ok, reason=why, remote=True, agent=remote.agent_info(), runner=remote.runner(),
+                    state=remote.remote_snapshot())
     ok, why = leap.available()
     return dict(available=ok, reason=why, remote=False, state=leap.snapshot())
 

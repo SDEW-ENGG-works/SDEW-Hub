@@ -81,10 +81,12 @@ function renderLeap(d) {
     warn.querySelector('.card-title').textContent = d.available ? 'The SDEW PC is not connected' : 'LEAP automation is not ready';
     warn.querySelector('span').textContent = d.reason || '';
     const note = document.getElementById('leap-remote-note');
-    const pcOn = d.remote && d.agent && d.agent.online;
-    note.style.display = pcOn ? '' : 'none';
+    const pcOn = d.remote && d.agent && d.agent.online && d.runner !== 'cloud';
+    const cloud = d.remote && d.runner === 'cloud';
+    note.style.display = pcOn || cloud ? '' : 'none';
     if (pcOn) note.querySelector('span').innerHTML = `The upload runs on the SDEW PC <b>${esc(d.agent.host)}</b> — you can follow every step and press Submit from here.`;
-    document.getElementById('leap-headed-text').textContent = d.remote ? 'Show the LEAP browser window on the SDEW PC' : 'Show the LEAP browser window';
+    if (cloud) note.querySelector('span').innerHTML = `The upload runs in a <b>cloud browser on Vercel</b> — no PC needed. Follow every step and press Submit here.`;
+    document.getElementById('leap-headed-text').textContent = d.remote ? (d.runner === 'cloud' ? 'Show the LEAP browser window (only when the SDEW PC does it)' : 'Show the LEAP browser window on the SDEW PC') : 'Show the LEAP browser window';
     const busy = ['running', 'waiting'].includes(s.phase);
     document.getElementById('btn-leap-upload').disabled = !d.available || busy;
     document.getElementById('btn-leap-verify').disabled = !d.available || busy;

@@ -66,10 +66,23 @@ def latest_job():
 
 
 # ---------------------------------------------------------------- website side
+def runner():
+    """'pc' or 'cloud' - who does the next upload started on the website.
+    LEAP_RUNNER = auto (PC when it is online, else the Vercel cloud browser) | cloud | pc."""
+    from . import leap_cloud
+    mode = (config.read_env().get("LEAP_RUNNER") or "auto").strip().lower()
+    cloud_ok = leap_cloud.usable()[0]
+    if mode == "pc" or not cloud_ok:
+        return "pc"
+    if mode == "cloud":
+        return "cloud"
+    return "pc" if agent_info()["online"] else "cloud"
+
+
 def remote_available():
     """The button is always usable on the website - when the PC is off the job just waits."""
     a = agent_info()
-    if a["online"]:
+    if a["online"] or runner() == "cloud":
         return True, ""
     return True, (f"The SDEW PC is not connected right now (last seen: {a['seen']}). You can still press "
                   "Upload - it starts as soon as the SDEW Hub app (start.bat) is running on the PC.")
@@ -78,6 +91,8 @@ def remote_available():
 def _active(j):
     if not j:
         return False
+    if j["status"] == "starting":
+        return time.time() - float(j["updated_ts"] or 0) < 600
     if j["status"] == "queued":
         return time.time() - float(j["updated_ts"] or 0) < QUEUE_MAX
     return j["status"] in ("running", "waiting") and time.time() - float(j["updated_ts"] or 0) < STALE
@@ -89,12 +104,25 @@ def remote_start(run_id, mode, headed):
     run = one("SELECT id, file_name FROM chep_runs WHERE id=?", (run_id,))
     if not run:
         raise RuntimeError("That file is not in History any more.")
+    who = runner()
+    status = "starting" if who == "cloud" else "queued"   # 'starting' = for the cloud browser only
     con = get_db()
-    con.execute("INSERT INTO leap_jobs(run_id, mode, headed, status, state, decision, created_at, updated_ts) "
-                "VALUES(?,?,?,?,?,?,?,?)",
-                (run_id, mode, 1 if headed else 0, "queued", json.dumps(dict(file_name=run["file_name"])),
-                 None, _now(), time.time()))
+    cur = con.execute("INSERT INTO leap_jobs(run_id, mode, headed, status, state, decision, created_at, updated_ts) "
+                      "VALUES(?,?,?,?,?,?,?,?)",
+                      (run_id, mode, 1 if headed else 0, status,
+                       json.dumps(dict(file_name=run["file_name"], runner=who)), None, _now(), time.time()))
     con.commit()
+    if who == "cloud":
+        from . import leap_cloud
+        try:
+            leap_cloud.launch(cur.lastrowid)
+        except RuntimeError as e:
+            con.execute("UPDATE leap_jobs SET status='error', state=?, updated_ts=? WHERE id=?",
+                        (json.dumps(dict(active=False, phase="error", error=str(e), mode=mode,
+                                         file_name=run["file_name"], steps=[], log=[str(e)])),
+                         time.time(), cur.lastrowid))
+            con.commit()
+            raise
     return remote_snapshot()
 
 
@@ -104,7 +132,16 @@ def remote_snapshot():
         return dict(active=False, phase="idle")
     st = json.loads(j["state"] or "{}")
     age = time.time() - float(j["updated_ts"] or 0)
-    if j["status"] == "queued":
+    if j["status"] == "starting":
+        st = dict(active=True, phase="running", mode=j["mode"], file_name=st.get("file_name", ""),
+                  run_id=j["run_id"], runner="cloud",
+                  steps=[dict(key="pc", label="Start the cloud browser (Vercel)", status="doing",
+                              detail="Starting… the very first run installs Chromium and takes about 3 minutes")],
+                  parts=[], current=None, log=[], verify=None)
+        if age > 600:
+            st.update(phase="error", error="The cloud browser did not start within 10 minutes.")
+            st["steps"][0].update(status="error", detail=st["error"])
+    elif j["status"] == "queued":
         a = agent_info()
         if age > QUEUE_MAX:
             st = dict(active=False, phase="cancelled", mode=j["mode"], file_name=st.get("file_name", ""),
@@ -139,7 +176,7 @@ def remote_decide(choice):
 def remote_cancel():
     j = latest_job()
     con = get_db()
-    if j and j["status"] == "queued":
+    if j and j["status"] in ("queued", "starting"):
         con.execute("UPDATE leap_jobs SET status='cancelled', state=?, updated_ts=? WHERE id=?",
                     (json.dumps(dict(active=False, phase="cancelled", mode=j["mode"],
                                      file_name=json.loads(j["state"] or "{}").get("file_name", ""),
@@ -216,11 +253,53 @@ def _commit():
     get_db().commit()
 
 
+def _follow_once(jid, mem):
+    """Pass Submit/Cancel from leap_jobs to leap.py and copy leap.py's state into leap_jobs.
+    Returns True while the job is still going."""
+    j = one("SELECT decision FROM leap_jobs WHERE id=?", (jid,))
+    if j and j["decision"]:
+        get_db().execute("UPDATE leap_jobs SET decision=NULL WHERE id=?", (jid,))
+        _commit()
+        try:
+            if leap.STATE.get("phase") == "waiting":
+                leap.decide(j["decision"])
+            elif j["decision"] == "cancel":
+                leap.cancel()
+        except RuntimeError:
+            pass
+    going = bool(leap.STATE.get("active")) and leap.STATE.get("phase") in ("running", "waiting")
+    text = json.dumps(leap.snapshot())
+    now = time.time()
+    if text != mem.get("text") or now - mem.get("at", 0) > 15 or not going:
+        get_db().execute("UPDATE leap_jobs SET status=?, state=?, updated_ts=? WHERE id=?",
+                         (_status(leap.STATE.get("phase")), text, now, jid))
+        _commit()
+        mem.update(text=text, at=now)
+    return going
+
+
+def follow_job(spec, jid):
+    """Blocking: follow job jid until leap.py has finished (used in the cloud browser)."""
+    cdb.use(spec)
+    mem, errors = {}, 0
+    while True:
+        try:
+            if not _follow_once(jid, mem):
+                break
+            errors = 0
+        except Exception:  # noqa: BLE001 - internet hiccup: try again
+            errors += 1
+            traceback.print_exc()
+            if errors > 100 and not leap.STATE.get("active"):
+                break
+        time.sleep(FAST)
+
+
 def _loop(targets):
     global _job
     host = socket.gethostname()
     last_beat = {}
-    last_push, last_text = 0.0, None
+    mem = {}
     warned = set()
     while True:
         now = time.time()
@@ -234,26 +313,9 @@ def _loop(targets):
                     last_beat[label] = now
                     warned.discard(label)
                 if _job and _job[0] is spec:
-                    jid = _job[1]
-                    j = one("SELECT decision FROM leap_jobs WHERE id=?", (jid,))
-                    if j and j["decision"]:
-                        get_db().execute("UPDATE leap_jobs SET decision=NULL WHERE id=?", (jid,))
-                        _commit()
-                        try:
-                            if leap.STATE.get("phase") == "waiting":
-                                leap.decide(j["decision"])
-                            elif j["decision"] == "cancel":
-                                leap.cancel()
-                        except RuntimeError:
-                            pass
-                    text = json.dumps(leap.snapshot())
-                    if text != last_text or now - last_push > 15:
-                        get_db().execute("UPDATE leap_jobs SET status=?, state=?, updated_ts=? WHERE id=?",
-                                         (_status(leap.STATE.get("phase")), text, time.time(), jid))
-                        _commit()
-                        last_text, last_push = text, now
-                    if not (bool(leap.STATE.get("active")) and leap.STATE.get("phase") in ("running", "waiting")):
-                        _job, last_text = None, None
+                    if not _follow_once(_job[1], mem):
+                        _job = None
+                        mem = {}
                 elif not _job and not busy:
                     j = one("SELECT id, run_id, mode, headed, updated_ts FROM leap_jobs WHERE status='queued' "
                             "ORDER BY id DESC LIMIT 1")
