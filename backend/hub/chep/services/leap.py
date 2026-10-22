@@ -25,6 +25,7 @@ import zipfile
 from datetime import datetime
 
 from .. import config
+from .. import db as cdb
 from ..db import get_db, one
 from .reconcile import parse_pending_csv, problem_rows, reconcile
 
@@ -120,7 +121,12 @@ def start(run_id, mode="upload", headed=False):
             raise RuntimeError("LEAP is already busy with another file - wait for it to finish or press Cancel.")
         _reset(run_id=run_id, file_name=run["file_name"], mode=mode, headed=bool(headed))
     _decision.clear()
-    threading.Thread(target=_worker, args=(run_id, mode, bool(headed)), daemon=True).start()
+    spec = cdb.current()   # the worker uses the same CHEP database as the caller (see leap_remote)
+
+    def _go():
+        cdb.use(spec)
+        _worker(run_id, mode, bool(headed))
+    threading.Thread(target=_go, daemon=True).start()
     return snapshot()
 
 

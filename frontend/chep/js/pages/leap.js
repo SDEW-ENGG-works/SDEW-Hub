@@ -76,7 +76,9 @@ const STEP_ICON = { todo: '○', doing: '◔', waiting: '!', done: '✓', error:
 function renderLeap(d) {
     const s = d.state || {};
     const warn = document.getElementById('leap-unavailable');
-    warn.style.display = d.available ? 'none' : '';
+    // the website keeps the button on while the PC is off (the job waits) - the yellow box says so
+    warn.style.display = d.reason ? '' : 'none';
+    warn.querySelector('.card-title').textContent = d.available ? 'The SDEW PC is not connected' : 'LEAP automation is not ready';
     warn.querySelector('span').textContent = d.reason || '';
     const note = document.getElementById('leap-remote-note');
     const pcOn = d.remote && d.agent && d.agent.online;

@@ -1,11 +1,17 @@
 """LEAP from the website. The browser automation can only run on the SDEW PC, so:
 
   website (Vercel)  -> puts a job in the shared Turso table leap_jobs, then shows the job's
-                       state and writes the user's Submit / Cancel into it
+                       state and writes the user's Submit / Cancel into it. The button works
+                       even while the PC is off: the job waits until the PC picks it up.
   SDEW PC app       -> (with USE_CLOUD_DB=1 and Playwright) a background "agent" says it is
                        online every few seconds, picks up queued jobs, runs them with leap.py and
                        copies the live steps back into leap_jobs; a Submit pressed on the website
                        reaches the PC through the same row.
+
+The agent serves EVERY database a website may read the CHEP pages from: the hub's database
+(what the PC itself uses) and, when CHEP_TURSO_DATABASE_URL is in .env and is a different
+database, the old CHEP website's database. So the button works whichever website is open and
+whichever database Vercel is set to.
 Jobs started on the PC itself are copied to leap_jobs too, so the website can follow them.
 """
 import json
@@ -16,6 +22,7 @@ import traceback
 from datetime import datetime
 
 from .. import config
+from .. import db as cdb
 from ..db import get_db, get_setting, one, set_setting
 from . import leap
 
@@ -24,22 +31,34 @@ FAST = 1.5        # s between updates while a job runs
 BEAT = 20         # s between "PC is online" notes
 ONLINE = 75       # PC counts as online if its last note is newer than this
 STALE = 120       # a running job with no update for this long = PC stopped answering
+QUEUE_MAX = 6 * 3600   # a job nobody picked up for 6 h is dropped (not started hours later)
 
 _agent_on = False
-_job_id = None
+_job = None       # (spec, job_id) of the job the agent is following
 
 
 def _now():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _ago(sec):
+    sec = int(sec)
+    if sec < 90:
+        return f"{sec} s ago"
+    if sec < 5400:
+        return f"{sec // 60} min ago"
+    if sec < 2 * 86400:
+        return f"{sec // 3600} h ago"
+    return f"{sec // 86400} days ago"
+
+
 # ---------------------------------------------------------------- shared
 def agent_info():
     a = get_setting("leap_agent")
     if not a or not a.get("ts"):
-        return None
-    age = time.time() - float(a["ts"])
-    return dict(host=a.get("host", ""), age=int(age), online=age < ONLINE)
+        return dict(host="", age=None, online=False, seen="never")
+    age = max(0, time.time() - float(a["ts"]))
+    return dict(host=a.get("host", ""), age=int(age), online=age < ONLINE, seen=_ago(age))
 
 
 def latest_job():
@@ -48,22 +67,23 @@ def latest_job():
 
 # ---------------------------------------------------------------- website side
 def remote_available():
+    """The button is always usable on the website - when the PC is off the job just waits."""
     a = agent_info()
-    if a and a["online"]:
+    if a["online"]:
         return True, ""
-    return False, ("The LEAP upload runs on the SDEW PC. Start the CHEP app there (start.bat, with "
-                   "USE_CLOUD_DB=1 in .env) - this button works here as soon as it is running.")
+    return True, (f"The SDEW PC is not connected right now (last seen: {a['seen']}). You can still press "
+                  "Upload - it starts as soon as the SDEW Hub app (start.bat) is running on the PC.")
 
 
 def _active(j):
-    return j and j["status"] in ("queued", "running", "waiting") and \
-        time.time() - float(j["updated_ts"] or 0) < STALE
+    if not j:
+        return False
+    if j["status"] == "queued":
+        return time.time() - float(j["updated_ts"] or 0) < QUEUE_MAX
+    return j["status"] in ("running", "waiting") and time.time() - float(j["updated_ts"] or 0) < STALE
 
 
 def remote_start(run_id, mode, headed):
-    ok, why = remote_available()
-    if not ok:
-        raise RuntimeError(why)
     if _active(latest_job()):
         raise RuntimeError("LEAP is already busy with another file - wait for it to finish or press Stop.")
     run = one("SELECT id, file_name FROM chep_runs WHERE id=?", (run_id,))
@@ -83,13 +103,20 @@ def remote_snapshot():
     if not j:
         return dict(active=False, phase="idle")
     st = json.loads(j["state"] or "{}")
-    if j["status"] == "queued":
-        st = dict(active=True, phase="running", mode=j["mode"], file_name=st.get("file_name", ""),
-                  run_id=j["run_id"], steps=[dict(key="pc", label="Sent to the SDEW PC", status="doing",
-                                                  detail="Waiting for the PC app to pick it up")],
-                  parts=[], current=None, log=[], verify=None)
     age = time.time() - float(j["updated_ts"] or 0)
-    if j["status"] in ("queued", "running", "waiting") and age > STALE:
+    if j["status"] == "queued":
+        a = agent_info()
+        if age > QUEUE_MAX:
+            st = dict(active=False, phase="cancelled", mode=j["mode"], file_name=st.get("file_name", ""),
+                      steps=[], log=["Not started - the SDEW PC did not pick it up within 6 hours"])
+        else:
+            detail = ("The PC is picking it up…" if a["online"] else
+                      f"Waiting for the SDEW PC - start the SDEW Hub app there (last seen: {a['seen']})")
+            st = dict(active=True, phase="running", mode=j["mode"], file_name=st.get("file_name", ""),
+                      run_id=j["run_id"], steps=[dict(key="pc", label="Sent to the SDEW PC", status="doing",
+                                                      detail=detail)],
+                      parts=[], current=None, log=[], verify=None)
+    elif j["status"] in ("running", "waiting") and age > STALE:
         st["phase"] = "error"
         st["error"] = "The SDEW PC stopped answering (app closed or no internet)."
         st.setdefault("log", []).append(st["error"])
@@ -111,15 +138,14 @@ def remote_decide(choice):
 
 def remote_cancel():
     j = latest_job()
+    con = get_db()
     if j and j["status"] == "queued":
-        con = get_db()
         con.execute("UPDATE leap_jobs SET status='cancelled', state=?, updated_ts=? WHERE id=?",
                     (json.dumps(dict(active=False, phase="cancelled", mode=j["mode"],
                                      file_name=json.loads(j["state"] or "{}").get("file_name", ""),
                                      steps=[], log=["Cancelled before the PC started it"])), time.time(), j["id"]))
         con.commit()
     elif _active(j):
-        con = get_db()
         con.execute("UPDATE leap_jobs SET decision='cancel' WHERE id=?", (j["id"],))
         con.commit()
     return remote_snapshot()
@@ -130,24 +156,44 @@ def agent_running():
     return _agent_on
 
 
+def _targets():
+    """[(label, spec)] - spec None = the CHEP database this PC app uses itself."""
+    from ... import config as hub
+    from ... import db as hubdb
+    out = [("this PC's database", None)]
+    env = hub.read_env()
+    mine = (hub.cloud_db() or hub.module_cloud_db("chep") or (None,))[0]
+    url, token = env.get("CHEP_TURSO_DATABASE_URL"), env.get("CHEP_TURSO_AUTH_TOKEN")
+    if url and token and url != mine:
+        def factory(url=url, token=token):
+            from ...turso import Connection
+            return hubdb.ModuleConnection(Connection(url, token), hubdb.MODULE_RENAMES.get("chep", {}))
+        out.append(("the old CHEP website's database", ("chep-site", factory, False)))
+    return out
+
+
 def start_agent():
     """Called once when the PC app starts. Does nothing on Vercel, with the PC's own database,
     or when Playwright / the LEAP login are missing."""
     global _agent_on
     if _agent_on or config.ON_VERCEL or config.db_mode() != "cloud":
+        if not config.ON_VERCEL and config.db_mode() != "cloud":
+            print("[LEAP agent] not started: USE_CLOUD_DB=1 is not in .env, so the website can't reach this PC")
         return
     ok, why = leap.available()
     if not ok:
         print(f"[LEAP agent] not started: {why}")
         return
     _agent_on = True
-    threading.Thread(target=_loop, daemon=True, name="leap-agent").start()
-    print("[LEAP agent] on - the website can now send LEAP uploads to this PC")
+    targets = _targets()
+    threading.Thread(target=_loop, args=(targets,), daemon=True, name="leap-agent").start()
+    print("[LEAP agent] on - the website can now send LEAP uploads to this PC "
+          f"(watching {' and '.join(t[0] for t in targets)})")
 
 
 def track_local(run_id, mode, headed):
     """A job started on the PC page: give it a leap_jobs row so the website can follow it."""
-    global _job_id
+    global _job
     if not _agent_on:
         return
     try:
@@ -157,7 +203,7 @@ def track_local(run_id, mode, headed):
                           (run_id, mode, 1 if headed else 0, "running", json.dumps(leap.snapshot()), None,
                            _now(), time.time()))
         con.commit()
-        _job_id = cur.lastrowid
+        _job = (cdb.current(), cur.lastrowid)
     except Exception:  # noqa: BLE001 - the upload itself must not fail because of this
         traceback.print_exc()
 
@@ -166,57 +212,73 @@ def _status(phase):
     return phase if phase in ("running", "waiting", "done", "error", "cancelled") else "running"
 
 
-def _loop():
-    global _job_id
+def _commit():
+    get_db().commit()
+
+
+def _loop(targets):
+    global _job
     host = socket.gethostname()
-    last_beat, last_push, last_text = 0.0, 0.0, None
+    last_beat = {}
+    last_push, last_text = 0.0, None
+    warned = set()
     while True:
-        try:
-            now = time.time()
-            if now - last_beat > BEAT:
-                set_setting("leap_agent", dict(host=host, ts=now, at=_now()))
-                last_beat = now
-            phase = leap.STATE.get("phase")
-            busy = bool(leap.STATE.get("active")) and phase in ("running", "waiting")
-            if _job_id:
-                j = one("SELECT decision FROM leap_jobs WHERE id=?", (_job_id,))
-                if j and j["decision"]:
-                    con = get_db()
-                    con.execute("UPDATE leap_jobs SET decision=NULL WHERE id=?", (_job_id,))
-                    con.commit()
-                    try:
-                        if phase == "waiting":
-                            leap.decide(j["decision"])
-                        elif j["decision"] == "cancel":
-                            leap.cancel()
-                    except RuntimeError:
-                        pass
-                    phase = leap.STATE.get("phase")
-                text = json.dumps(leap.snapshot())
-                if text != last_text or now - last_push > 15:
-                    con = get_db()
-                    con.execute("UPDATE leap_jobs SET status=?, state=?, updated_ts=? WHERE id=?",
-                                (_status(phase), text, time.time(), _job_id))
-                    con.commit()
-                    last_text, last_push = text, now
-                if not busy:
-                    _job_id, last_text = None, None
-            elif not busy:
-                j = one("SELECT id, run_id, mode, headed FROM leap_jobs WHERE status='queued' ORDER BY id LIMIT 1")
-                if j:
-                    con = get_db()
-                    con.execute("UPDATE leap_jobs SET status='running', updated_ts=? WHERE id=? AND status='queued'",
-                                (time.time(), j["id"]))
-                    con.commit()
-                    print(f"[LEAP agent] job {j['id']} from the website: {j['mode']} History file {j['run_id']}")
-                    try:
-                        leap.start(j["run_id"], j["mode"], bool(j["headed"]))
-                        _job_id = j["id"]
-                    except RuntimeError as e:
-                        con.execute("UPDATE leap_jobs SET status='error', state=?, updated_ts=? WHERE id=?",
-                                    (json.dumps(dict(active=False, phase="error", error=str(e), mode=j["mode"],
-                                                     steps=[], log=[f"PC: {e}"])), time.time(), j["id"]))
-                        con.commit()
-        except Exception:  # noqa: BLE001 - keep the agent alive (e.g. internet down for a moment)
-            traceback.print_exc()
-        time.sleep(FAST if _job_id else POLL)
+        now = time.time()
+        phase = leap.STATE.get("phase")
+        busy = bool(leap.STATE.get("active")) and phase in ("running", "waiting")
+        for label, spec in targets:
+            cdb.use(spec)
+            try:
+                if now - last_beat.get(label, 0) > BEAT:
+                    set_setting("leap_agent", dict(host=host, ts=now, at=_now()))
+                    last_beat[label] = now
+                    warned.discard(label)
+                if _job and _job[0] is spec:
+                    jid = _job[1]
+                    j = one("SELECT decision FROM leap_jobs WHERE id=?", (jid,))
+                    if j and j["decision"]:
+                        get_db().execute("UPDATE leap_jobs SET decision=NULL WHERE id=?", (jid,))
+                        _commit()
+                        try:
+                            if leap.STATE.get("phase") == "waiting":
+                                leap.decide(j["decision"])
+                            elif j["decision"] == "cancel":
+                                leap.cancel()
+                        except RuntimeError:
+                            pass
+                    text = json.dumps(leap.snapshot())
+                    if text != last_text or now - last_push > 15:
+                        get_db().execute("UPDATE leap_jobs SET status=?, state=?, updated_ts=? WHERE id=?",
+                                         (_status(leap.STATE.get("phase")), text, time.time(), jid))
+                        _commit()
+                        last_text, last_push = text, now
+                    if not (bool(leap.STATE.get("active")) and leap.STATE.get("phase") in ("running", "waiting")):
+                        _job, last_text = None, None
+                elif not _job and not busy:
+                    j = one("SELECT id, run_id, mode, headed, updated_ts FROM leap_jobs WHERE status='queued' "
+                            "ORDER BY id DESC LIMIT 1")
+                    if j and now - float(j["updated_ts"] or 0) > QUEUE_MAX:
+                        j = None
+                    if j:
+                        get_db().execute("UPDATE leap_jobs SET status='running', updated_ts=? "
+                                         "WHERE id=? AND status='queued'", (time.time(), j["id"]))
+                        _commit()
+                        print(f"[LEAP agent] job {j['id']} from the website ({label}): "
+                              f"{j['mode']} History file {j['run_id']}")
+                        try:
+                            leap.start(j["run_id"], j["mode"], bool(j["headed"]))
+                            _job = (spec, j["id"])
+                            busy = True
+                        except RuntimeError as e:
+                            get_db().execute("UPDATE leap_jobs SET status='error', state=?, updated_ts=? WHERE id=?",
+                                             (json.dumps(dict(active=False, phase="error", error=str(e), mode=j["mode"],
+                                                              steps=[], log=[f"PC: {e}"])), time.time(), j["id"]))
+                            _commit()
+            except Exception as e:  # noqa: BLE001 - keep the agent alive (internet down for a moment, ...)
+                if label not in warned:
+                    print(f"[LEAP agent] {label}: {e}")
+                    traceback.print_exc()
+                    warned.add(label)
+            finally:
+                cdb.use(None)
+        time.sleep(FAST if _job else POLL)
