@@ -91,7 +91,9 @@ def store_register(name, stored, path):
     now = _now()
     con.execute("DELETE FROM gp_register")
     seen = set()
-    for r in reg["rows"]:
+    for k, r in enumerate(reg["rows"]):
+        if k and k % 2000 == 0:
+            con.commit()          # Turso: send the rows in parts, not one huge request
         if r["inv_key"] in seen:      # the same invoice twice: keep the marked / first row
             if r["pv"]:
                 con.execute("UPDATE gp_register SET pv=?, pv_date=? WHERE inv_key=? AND (pv IS NULL OR pv='')",

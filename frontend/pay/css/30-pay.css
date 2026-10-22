@@ -1,0 +1,61 @@
+/* Payment Marking page bits (rest is the shared SDEW theme) */
+.pay-sources { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 1rem; margin-bottom: 0.4rem; }
+.pay-sources .card { margin-bottom: 0; }
+.source-card { border-left: 3px solid var(--line-strong); }
+.source-card.ready { border-left-color: var(--success); }
+.source-head { display: flex; gap: 0.75rem; align-items: flex-start; }
+.source-head .card-title { margin-bottom: 0.15rem; }
+.source-head .stat-sub { word-break: break-all; }
+.step-no {
+    flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 0.8rem;
+}
+.source-card.ready .step-no { background: var(--success-soft); color: var(--success); }
+.source-body { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.7rem; }
+.source-body .chip { margin: 0; }
+.dropzone.compact { padding: 1rem; min-height: 0; justify-content: center; }
+#upload-results-check { margin: 0.6rem 0 1rem; }
+#upload-results-check:empty { margin: 0 0 1rem; }
+
+.cat-help {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+    font-size: 0.8rem; color: var(--muted); background: var(--card-alt); border: 1px solid var(--line);
+    border-radius: var(--radius-md); padding: 0.6rem 0.8rem; margin-bottom: 0.9rem;
+}
+.data-table td.center { text-align: center; }
+.mark-box { width: 16px; height: 16px; cursor: pointer; accent-color: var(--success); }
+.tick-done { color: var(--success); font-weight: 700; }
+.data-table tr.row-mark td { background: var(--success-soft); }
+
+.color-row { display: flex; gap: 0.5rem; align-items: center; }
+.color-row input { flex: 1; }
+.swatch { width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); flex: none; }
+
+@media (max-width: 1000px) { .pay-sources { grid-template-columns: 1fr; } }
+
+/* ---- login page (same as SDEW Hub) ---- */
+.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.login-card {
+    width: 100%; max-width: 360px; background: var(--card);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card); padding: 2rem 1.75rem 1.75rem;
+}
+.login-logo { display: block; margin: 0 auto 0.4rem; height: 40px; width: auto; }
+.login-sub { text-align: center; color: var(--muted); font-size: 0.85rem; font-weight: 600; margin-bottom: 1.5rem; }
+.login-card .form-group { margin-bottom: 0.6rem; }
+.login-card input[type="password"] {
+    width: 100%; background: #fff; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    padding: 0.6rem 0.75rem; font-family: var(--font); font-size: 0.92rem; color: var(--text);
+}
+.login-card input[type="password"]:focus { outline: none; border-color: var(--accent); }
+.login-error { min-height: 1.2rem; color: var(--danger); font-size: 0.8rem; margin-bottom: 0.4rem; }
+.login-btn { width: 100%; justify-content: center; }
+.nav-btn.logout { color: var(--muted); }
+
+/* ---- sales marking ---- */
+.data-table td.bad { color: var(--danger); font-weight: 600; }
+.chip.warn-chip { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+#src-grin .source-head { align-items: center; }
+#grin-fetch-log { margin-top: 0.7rem; max-height: 140px; }
+#upload-results-sales { margin: 0.6rem 0 1rem; }
+#upload-results-sales:empty { margin: 0 0 1rem; }

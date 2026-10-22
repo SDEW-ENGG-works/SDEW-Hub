@@ -57,7 +57,7 @@ def app(environ, start_response):
         start_response(f"{resp.status} {'OK' if resp.status < 400 else 'Error'}", headers)
         return [resp.body]
 
-    if path in ("/supp", "/chep", "/dqms", "/grin"):
+    if path in ("/supp", "/chep", "/dqms", "/grin", "/pay"):
         start_response("301 Moved", [("Location", path + "/"), ("Content-Length", "0")])
         return [b""]
     page = index_page(path)

@@ -14,8 +14,8 @@
     <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
     <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
     <link rel="stylesheet" href="css/30-chep.css?v=76a684fbc0">
-    <link rel="stylesheet" href="css/hub.css?v=a9a7b3c1cd">
-    <script src="js/hubbar.js?v=d3a0017935"></script>
+    <link rel="stylesheet" href="css/hub.css?v=c1b1bbf517">
+    <script src="js/hubbar.js?v=46564c536e"></script>
 </head>
 
 <body>
@@ -153,8 +153,9 @@
                             <tr><td>BulkTransfer Template.xlsx (blank)</td><td>CHEP portal</td><td><span class="mod-tag chep">CHEP</span></td><td>Replaces the template in use</td></tr>
                             <tr><td>Invoice PDFs, DeliveryRequest PDFs</td><td>Tally / TAFE Channel</td><td><span class="mod-tag dqms">DQMS</span></td><td>DQMS template rows; DR Unit Size for the Invoice Unit</td></tr>
                             <tr><td>DQMS Batch Details Report .xls</td><td>TAFE Channel</td><td><span class="mod-tag dqms">DQMS</span></td><td>Batches in FIFO order (or the Get latest report button)</td></tr>
-                            <tr><td>PaymentDetailsExport*.xls (Payment Clearance)</td><td>TAFE Channel</td><td><span class="mod-tag grin">GRIN</span></td><td>Which invoices TAFE has paid (voucher no / date)</td></tr>
-                            <tr><td>Invoice register .xlsx (INVOICE NO … payment details)</td><td>SDEW accounts</td><td><span class="mod-tag grin">GRIN</span></td><td>Invoice value with GST and payments already marked</td></tr>
+                            <tr><td>PaymentDetailsExport*.xls (Payment Clearance)</td><td>TAFE Channel</td><td><span class="mod-tag pay">Payments</span></td><td>Which invoices TAFE has paid (voucher no / date) — marks the register, also used by GRIN</td></tr>
+                            <tr><td>Invoice register .xlsx (INVOICE NO … payment details)</td><td>SDEW accounts</td><td><span class="mod-tag pay">Payments</span></td><td>Payment marking; also invoice value and payments for GRIN</td></tr>
+                            <tr><td>TAFE SALES DETAILS .xlsx (INVOICE NO … GRN NO)</td><td>SDEW accounts</td><td><span class="mod-tag pay">Payments</span></td><td>Sales marking: GRN NO / DATE / QTY filled from TAFE GRIN</td></tr>
                             <tr><td>Tally XML export (Day Book)</td><td>Tally</td><td><span class="mod-tag grin">GRIN</span></td><td>Invoices when the live Tally pull cannot be used</td></tr>
                             <tr><td>templateStatus.csv / template.csv</td><td>TAFE Channel</td><td><span class="mod-tag dqms">DQMS</span></td><td>Portal messages per invoice / template headings</td></tr>
                         </tbody>
@@ -174,7 +175,7 @@
             <div class="card">
                 <form class="form-grid-4" onsubmit="event.preventDefault(); addItem()">
                     <div class="form-group"><label>Module</label>
-                        <select id="oi-module"><option value="supp">Supplementary Bill</option><option value="chep">CHEP</option><option value="dqms">DQMS</option><option value="grin">GRIN &amp; Payments</option><option value="pos">POs</option><option value="hub">Hub</option></select></div>
+                        <select id="oi-module"><option value="supp">Supplementary Bill</option><option value="chep">CHEP</option><option value="dqms">DQMS</option><option value="grin">GRIN &amp; Payments</option><option value="pay">Payments</option><option value="pos">POs</option><option value="hub">Hub</option></select></div>
                     <div class="form-group span-2"><label>What needs doing</label><input type="text" id="oi-title" placeholder="e.g. Ask TAFE for the revised rate of PO …"></div>
                     <div class="form-group align-end"><button class="btn btn-primary" type="submit">Add</button></div>
                 </form>

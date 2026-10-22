@@ -92,6 +92,7 @@
 .mod-tag.cross, .mod-tag.hub { background: #fdf0e6; color: #8a4510; }
 .mod-tag.pos { background: #eef4fb; color: #24548f; }
 .mod-tag.grin { background: #fdeceb; color: #9b2c22; }
+.mod-tag.pay { background: #eaf6ef; color: #1c7a4a; }
 
 .mini-list { list-style: none; margin: 0; padding: 0; }
 .mini-list li { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.42rem 0; border-top: 1px solid var(--line); font-size: 0.8rem; }

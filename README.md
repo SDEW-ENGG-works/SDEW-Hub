@@ -134,3 +134,21 @@ and double-click it once - it installs itself to `%LOCALAPPDATA%\SDEW`, runs hid
 (`--uninstall` removes it; source in `tools\tally_bridge_go\`). `tally_bridge.bat` (Python) does the same job without installing.
 Only the hub's pages (sdew-hub*.vercel.app, localhost:8050) may use the bridge. Chrome/Edge ask once to allow
 "access to devices on your local network" - press Allow. The hub on a PC (localhost:8050) still pulls its own Tally directly.
+
+## Payments (`/pay/`, added 22-Oct-2026)
+The separate Payment Marking app moved into the hub (`backend/hub/pay/`, `frontend/pay/`, tables `pm_*` and `ps_*`).
+- **Payment marking** – same as the old app: register + TAFE PaymentDetailsExport → voucher no / date marked in the
+  register (credit = paid, credit + ZK debit note = marked as before, ZK alone / KG not). The payment export and the
+  register (also the marked one) are passed on to GRIN & Payments too, so its "paid" status stays current.
+- **Sales marking** – the TAFE SALES DETAILS file (`INVOICE NO … PART NO … QTY | GRN QTY | GRN NO | GRN DATE`):
+  GRN NO, GRN DATE (dd/mm/yyyy) and GRN QTY = TAFE **accepted** qty from the hub's GRIN lines.
+  Match per invoice: same part → part starting with the other → one line each side / same qty. Inspection not
+  finished (accepted 0, rejected 0) → GRN QTY blank. A GRN NO / QTY already in the file is never changed unless ticked
+  ("GRN no differs"). Parties without a TAFE GRIN plant code (Supp Bill › Settings › Plants) are skipped.
+  **Fetch GRIN** on that tab = the Supp Bill's TAFE Channel fetch (on the website the SDEW PC does it); the check runs again after it.
+- The marked file becomes the file for the next check (both tabs). Hub drop box: payment export, register and
+  TAFE SALES DETAILS go to Payments.
+- First run on 22-Oct (sales file up to 21-Oct, GRIN up to 20-Oct): 14,511 lines → 527 GRN filled, 13,143 GRN QTY added,
+  28 short/rejected, 2 inspection open, 49 GRN no differs (typed GRN shifted by a row, mostly April), 409 GRIN pending,
+  22 not in GRIN data, 331 not a GRIN party. Typed GRN NO agreed with TAFE on 13,170 of 13,219.
+- The old app (`Downloads\SDEW\PaymentMarking`, repo SDEW-ENGG-works/Payment-marking) is retired.

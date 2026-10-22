@@ -26,7 +26,7 @@ DB_FILE = os.path.join(DATA_DIR, "sdew_hub.db")
 ENV_FILE = os.path.join(PROJECT_ROOT, ".env")
 DEFAULT_PORT = 8050
 
-MODULES = ("supp", "chep", "dqms", "grin")
+MODULES = ("supp", "chep", "dqms", "grin", "pay")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 

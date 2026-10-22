@@ -125,6 +125,36 @@ CREATE INDEX IF NOT EXISTS ix_gp_mail_inv ON gp_mail_invoices(inv_key);
 CREATE TABLE IF NOT EXISTS gp_notes(
     inv_key TEXT PRIMARY KEY, note TEXT, hold INTEGER DEFAULT 0, updated_at TEXT);
 
+-- ---------- Payments: Payment marking + Sales marking (was the separate Payment Marking app) ----------
+CREATE TABLE IF NOT EXISTS pm_files(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, name TEXT, stored TEXT,
+    uploaded_at TEXT, rows INTEGER, info TEXT, data BLOB);
+CREATE TABLE IF NOT EXISTS pm_pay_lines(
+    pv TEXT, pv_date TEXT, ref_doc TEXT, doc_type TEXT, inv_raw TEXT, inv_key TEXT, inv_date TEXT,
+    debit REAL, credit REAL, file_id INTEGER, loaded_at TEXT,
+    PRIMARY KEY(pv, ref_doc, doc_type, inv_raw));
+CREATE INDEX IF NOT EXISTS ix_pm_pay_inv ON pm_pay_lines(inv_key);
+CREATE TABLE IF NOT EXISTS pm_vouchers(
+    pv TEXT PRIMARY KEY, pv_date TEXT, amount REAL, vendor TEXT, file_id INTEGER);
+CREATE TABLE IF NOT EXISTS pm_runs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, register_file INTEGER, summary TEXT,
+    exported_at TEXT, exported_file INTEGER);
+CREATE TABLE IF NOT EXISTS pm_run_lines(
+    run_id INTEGER, seq INTEGER, cat TEXT, action TEXT, inv TEXT, inv_key TEXT, reg_row INTEGER,
+    reg_date TEXT, reg_amount REAL, reg_party TEXT, reg_mark TEXT, reg_mark_date TEXT,
+    pv TEXT, pv_date TEXT, credit REAL, debit REAL, doc_types TEXT, note TEXT,
+    PRIMARY KEY(run_id, seq));
+CREATE INDEX IF NOT EXISTS ix_pm_run_lines ON pm_run_lines(run_id, cat);
+CREATE TABLE IF NOT EXISTS ps_runs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, sales_file INTEGER, summary TEXT,
+    exported_at TEXT, exported_file INTEGER);
+CREATE TABLE IF NOT EXISTS ps_lines(
+    run_id INTEGER, seq INTEGER, cat TEXT, action TEXT, row INTEGER, inv TEXT, inv_key TEXT, inv_date TEXT,
+    party TEXT, part TEXT, qty REAL, sheet_gno TEXT, sheet_gdate TEXT, sheet_gqty REAL,
+    grin_no TEXT, grin_date TEXT, grin_qty REAL, acc_qty REAL, rej_qty REAL, grin_part TEXT, note TEXT,
+    PRIMARY KEY(run_id, seq));
+CREATE INDEX IF NOT EXISTS ix_ps_lines ON ps_lines(run_id, cat);
+
 -- ---------- Jobs the website hands to the SDEW PC (Tally pull, Fetch GRIN) ----------
 CREATE TABLE IF NOT EXISTS pc_jobs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, params TEXT, status TEXT, log TEXT, error TEXT,

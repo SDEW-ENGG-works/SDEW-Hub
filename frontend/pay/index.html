@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — Payments</title>
+    <link rel="icon" href="/assets/favicon.svg?v=fd66ffa491">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css?v=8fef5516b1">
+    <link rel="stylesheet" href="css/03-tables.css?v=39af8da3c3">
+    <link rel="stylesheet" href="css/05-ratecard.css?v=a6e7e5b643">
+    <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
+    <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
+    <link rel="stylesheet" href="css/30-pay.css?v=042331501c">
+    <link rel="stylesheet" href="/css/hub.css?v=c1b1bbf517">
+    <script src="/js/hubbar.js?v=46564c536e"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar (same as the other SDEW apps) -->
+        <header class="navbar">
+            <div class="nav-brand">
+                <img class="brand-logo" src="assets/sdew-logo.jpg?v=3908bac85d" alt="Sri Durga Engg. Works" width="189" height="40">
+                <span class="brand-divider" aria-hidden="true"></span>
+                <span class="brand-subtitle">Payments</span>
+            </div>
+
+            <nav class="nav-links">
+                <button class="nav-btn active" id="nav-check-btn" onclick="switchView('check')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                    Payment marking
+                    <span class="badge" id="mark-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-sales-btn" onclick="switchView('sales')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                    Sales marking
+                    <span class="badge" id="sales-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-uploads-btn" onclick="switchView('uploads')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Uploads
+                    <span class="badge secondary" id="voucher-count-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-settings-btn" onclick="switchView('settings')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </button>
+            </nav>
+        </header>
+
+        <!-- ============ CHECK ============ -->
+        <section class="view-section active" id="check-view">
+            <div class="section-header">
+                <div>
+                    <h2>Payment Marking</h2>
+                    <p class="section-desc">Drop the invoice register and the TAFE payment details export. Every invoice TAFE has paid gets its payment voucher number and date, like it was marked by hand.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="btn-report" onclick="downloadReport()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Check report
+                    </button>
+                    <button class="btn btn-secondary" id="btn-marked" onclick="downloadMarked()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download marked register
+                    </button>
+                    <button class="btn btn-primary" id="btn-check" onclick="runCheck()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        Check payments
+                    </button>
+                </div>
+            </div>
+
+            <div class="pay-sources">
+                <div class="card source-card" id="src-register">
+                    <div class="source-head">
+                        <span class="step-no">1</span>
+                        <div><div class="card-title">Invoice register</div><div class="stat-sub" id="src-register-sub">Not uploaded</div></div>
+                    </div>
+                    <div class="source-body" id="src-register-body"></div>
+                </div>
+                <div class="card source-card" id="src-payments">
+                    <div class="source-head">
+                        <span class="step-no">2</span>
+                        <div><div class="card-title">TAFE payment details</div><div class="stat-sub" id="src-payments-sub">Not uploaded</div></div>
+                    </div>
+                    <div class="source-body" id="src-payments-body"></div>
+                </div>
+                <label class="dropzone compact" id="dropzone-check">
+                    <input type="file" multiple accept=".xls,.xlsx" onchange="uploadFiles(this.files, 'check')">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <strong>Drop the register and payment export</strong>
+                    <span>Both at once is fine — they are recognised by their contents</span>
+                </label>
+            </div>
+            <div id="upload-results-check" class="upload-results"></div>
+
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-icon">✓</div><div class="stat-info"><span class="stat-label">Will be marked</span><span class="stat-value" id="st-mark">—</span><span class="stat-sub" id="st-mark-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">=</div><div class="stat-info"><span class="stat-label">Already marked</span><span class="stat-value" id="st-done">—</span><span class="stat-sub" id="st-done-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">!</div><div class="stat-info"><span class="stat-label">Needs a look</span><span class="stat-value" id="st-look">—</span><span class="stat-sub" id="st-look-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">–</div><div class="stat-info"><span class="stat-label">Not a payment / not found</span><span class="stat-value" id="st-none">—</span><span class="stat-sub" id="st-none-sub"></span></div></div>
+            </div>
+
+            <div class="card" id="voucher-card" style="display:none;">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+                    Payment vouchers
+                </div>
+                <p class="hint">Credit − Debit of every voucher must equal the voucher amount — that proves no line of the export was missed.</p>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Voucher</th><th>Date</th><th class="num">Lines</th><th class="num">Amount (Rs.)</th><th class="num">Credit</th><th class="num">Debit</th><th class="num">of which cash discount</th><th class="num">Credit − Debit</th><th>Tallies</th></tr></thead>
+                        <tbody id="voucher-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="category-pills" id="cat-pills"></div>
+                    <div class="search-box"><input type="text" id="line-search" placeholder="Search invoice, voucher, party…" oninput="debounced(() => loadLines(0))"></div>
+                </div>
+                <div class="cat-help" id="cat-help"></div>
+                <div class="table-wrapper">
+                    <table class="data-table bill-table">
+                        <thead>
+                            <tr>
+                                <th title="Ticked rows are marked in the register">Mark</th><th>Result</th><th>Invoice No</th><th class="num">Row</th><th>Invoice date</th><th>Party</th>
+                                <th class="num">Invoice amt</th><th>Voucher</th><th>Voucher date</th><th class="num">Credit</th><th class="num">Debit</th><th>Doc</th><th>Register now</th><th>Note</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lines-tbody"><tr><td colspan="14" class="muted-cell">Upload the two files, then press Check payments</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="table-footer">
+                    <span id="lines-total-text"></span>
+                    <div class="pager" id="lines-pager"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SALES MARKING ============ -->
+        <section class="view-section" id="sales-view">
+            <div class="section-header">
+                <div>
+                    <h2>Sales marking (GRN)</h2>
+                    <p class="section-desc">Fills GRN NO, GRN DATE and GRN QTY (accepted quantity) in the TAFE SALES DETAILS file from the TAFE GRIN lines in the hub. What is already in the file is never changed unless you tick it.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="btn-sales-report" onclick="downloadSalesReport()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Check report
+                    </button>
+                    <button class="btn btn-secondary" id="btn-sales-marked" onclick="downloadSalesMarked()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download marked sales file
+                    </button>
+                    <button class="btn btn-primary" id="btn-sales-check" onclick="runSalesCheck()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        Check GRN
+                    </button>
+                </div>
+            </div>
+
+            <div class="pay-sources">
+                <div class="card source-card" id="src-sales">
+                    <div class="source-head">
+                        <span class="step-no">1</span>
+                        <div><div class="card-title">TAFE SALES DETAILS file</div><div class="stat-sub" id="src-sales-sub">Not uploaded</div></div>
+                    </div>
+                    <div class="source-body" id="src-sales-body"></div>
+                </div>
+                <div class="card source-card" id="src-grin">
+                    <div class="source-head">
+                        <span class="step-no">2</span>
+                        <div style="flex:1"><div class="card-title">TAFE GRIN</div><div class="stat-sub" id="src-grin-sub">—</div></div>
+                        <button class="btn btn-outline btn-sm" id="btn-grin-fetch" onclick="salesFetchGrin()">Fetch GRIN</button>
+                    </div>
+                    <div class="source-body" id="src-grin-body"></div>
+                    <pre class="log-box" id="grin-fetch-log" style="display:none;"></pre>
+                </div>
+                <label class="dropzone compact" id="dropzone-sales">
+                    <input type="file" accept=".xls,.xlsx" onchange="uploadFiles(this.files, 'sales')">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <strong>Drop the TAFE SALES DETAILS file</strong>
+                    <span>INVOICE NO … PART NO … QTY · GRN QTY · GRN NO · GRN DATE</span>
+                </label>
+            </div>
+            <div id="upload-results-sales" class="upload-results"></div>
+
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-icon">✓</div><div class="stat-info"><span class="stat-label">Will be written</span><span class="stat-value" id="ss-mark">—</span><span class="stat-sub" id="ss-mark-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">=</div><div class="stat-info"><span class="stat-label">GRN NO typed = TAFE</span><span class="stat-value" id="ss-agree">—</span><span class="stat-sub" id="ss-agree-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">!</div><div class="stat-info"><span class="stat-label">Needs a look</span><span class="stat-value" id="ss-look">—</span><span class="stat-sub" id="ss-look-sub"></span></div></div>
+                <div class="stat-card"><div class="stat-icon">…</div><div class="stat-info"><span class="stat-label">GRIN pending</span><span class="stat-value" id="ss-pending">—</span><span class="stat-sub" id="ss-pending-sub"></span></div></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="category-pills" id="sales-pills"></div>
+                    <div class="search-box"><input type="text" id="sales-search" placeholder="Search invoice, part, GRN no…" oninput="debounced(() => loadSalesLines(0))"></div>
+                </div>
+                <div class="cat-help" id="sales-help"></div>
+                <div class="table-wrapper">
+                    <table class="data-table bill-table">
+                        <thead>
+                            <tr>
+                                <th title="Ticked rows are written into the file">Write</th><th>Result</th><th class="num">Row</th><th>Invoice No</th><th>Invoice date</th><th>Part No</th>
+                                <th class="num">Qty</th><th>File: GRN NO</th><th>File: date</th><th class="num">File: GRN QTY</th>
+                                <th>TAFE GRIN</th><th>GRIN date</th><th class="num">Accepted</th><th class="num">Rejected</th><th>Note</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-tbody"><tr><td colspan="15" class="muted-cell">Upload the sales file, then press Check GRN</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="table-footer">
+                    <span id="sales-total-text"></span>
+                    <div class="pager" id="sales-pager"></div>
+                </div>
+            </div>
+
+            <div class="card" id="grin-extra-card" style="display:none;">
+                <div class="card-title">TAFE GRIN lines whose invoice is not in the sales file</div>
+                <p class="hint" id="grin-extra-hint"></p>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>GRIN no</th><th>GRIN date</th><th>Invoice No</th><th>Part No</th><th class="num">GRIN qty</th><th>Plant</th></tr></thead>
+                        <tbody id="grin-extra-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ UPLOADS ============ -->
+        <section class="view-section" id="uploads-view">
+            <div class="section-header">
+                <div>
+                    <h2>Uploads</h2>
+                    <p class="section-desc">The newest register is the one that gets marked. Payment exports add up — the same payment line is never counted twice, so overlapping date ranges are fine.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <label class="dropzone" id="dropzone">
+                    <input type="file" id="file-input" multiple accept=".xls,.xlsx" onchange="uploadFiles(this.files)">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <strong>Drop files here or click to choose</strong>
+                    <span>Invoice register (.xlsx), TAFE PaymentDetailsExport (.xls) and TAFE SALES DETAILS (.xlsx)</span>
+                </label>
+                <div id="upload-results" class="upload-results"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Payment vouchers loaded</div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Voucher</th><th>Date</th><th class="num">Amount (Rs.)</th><th class="num">Lines</th></tr></thead>
+                        <tbody id="vouchers-loaded-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Upload history</div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>When</th><th>Type</th><th>File</th><th class="num">Rows</th><th>Details</th></tr></thead>
+                        <tbody id="files-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="view-section" id="settings-view">
+            <div class="section-header">
+                <div>
+                    <h2>Settings</h2>
+                    <p class="section-desc">How invoices are marked. Press <b>Save</b>, then <b>Check payments</b> again.</p>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Marking rules</div>
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label>Credit and debit note on the same invoice</label>
+                        <label class="check"><input type="checkbox" id="set-credit-debit"> Mark it (as it was done by hand before)</label>
+                        <p class="hint">A debit note (ZK) alone is never marked — it is not a payment.</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Credit not close to the invoice amount</label>
+                        <label class="check"><input type="checkbox" id="set-amount-differs"> Mark it anyway (it is still listed under "Amount differs")</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Amount check</div>
+                <p class="hint">TAFE pays the invoice amount less about 0.1 % TDS. Credit ÷ invoice amount outside this range is shown as "Amount differs".</p>
+                <div class="form-grid-4">
+                    <div class="form-group"><label>Lowest (credit ÷ amount)</label><input type="number" step="0.001" id="set-min-ratio"></div>
+                    <div class="form-group"><label>Highest (credit ÷ amount)</label><input type="number" step="0.001" id="set-max-ratio"></div>
+                    <div class="form-group"><label>Row colour for marked rows</label>
+                        <div class="color-row"><input type="text" id="set-fill" maxlength="7" oninput="previewFill()"><span class="swatch" id="fill-swatch"></span></div>
+                    </div>
+                    <div class="form-group"><label>Doc types to ignore</label><input type="text" id="set-ignore" placeholder="KG"><p class="hint">KG = cash discount</p></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Clear data</div>
+                <p class="hint">Removes data from this app only (uploaded files stay in the data folder).</p>
+                <div class="btn-row">
+                    <button class="btn btn-danger-text" onclick="clearData('payments')">Clear payment lines</button>
+                    <button class="btn btn-danger-text" onclick="clearData('runs')">Clear payment checks</button>
+                    <button class="btn btn-danger-text" onclick="clearData('sales')">Clear sales checks</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Confirm modal -->
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="js/core/utils.js?v=f0aeaaa393"></script>
+    <script src="js/pages/check.js?v=0157470119"></script>
+    <script src="js/pages/uploads.js?v=c99499ad00"></script>
+    <script src="js/pages/sales.js?v=4489f5051d"></script>
+    <script src="js/pages/settings.js?v=edda13122a"></script>
+    <script src="js/main.js?v=65eb60f54d"></script>
+</body>
+
+</html>

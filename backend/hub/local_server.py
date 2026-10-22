@@ -72,7 +72,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/api/"):
             return self._api()
         p = self.path.split("?")[0]
-        if p in ("/supp", "/chep", "/dqms", "/grin"):
+        if p in ("/supp", "/chep", "/dqms", "/grin", "/pay"):
             self.send_response(301)
             self.send_header("Location", p + "/")
             self.send_header("Content-Length", "0")

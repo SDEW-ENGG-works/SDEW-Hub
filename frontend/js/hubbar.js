@@ -1,16 +1,17 @@
-// The SDEW Hub strip at the top of every page (hub + Supplementary Bill + CHEP + DQMS + GRIN & Payments).
+// The SDEW Hub strip at the top of every page (hub + Supplementary Bill + CHEP + DQMS + GRIN & Payments + Payments).
 // - switches between the modules, shows how many checks need attention
 // - one search box for invoice / part / PO / DR / GRIN numbers (opens the hub's Find page)
 // - links like /supp/#pos open that tab of a module page, and the address follows the tab you open
 (function () {
     const path = location.pathname;
-    const here = path.startsWith('/supp') ? 'supp' : path.startsWith('/chep') ? 'chep' : path.startsWith('/dqms') ? 'dqms' : path.startsWith('/grin') ? 'grin' : 'hub';
+    const here = path.startsWith('/supp') ? 'supp' : path.startsWith('/chep') ? 'chep' : path.startsWith('/dqms') ? 'dqms' : path.startsWith('/grin') ? 'grin' : path.startsWith('/pay') ? 'pay' : 'hub';
     const tabs = [
         ['hub', '/', 'Today', ''],
         ['supp', '/supp/', 'Supplementary Bill', 'Supp. Bill'],
         ['chep', '/chep/', 'CHEP Transfer', 'CHEP'],
         ['dqms', '/dqms/', 'DQMS Upload', 'DQMS'],
         ['grin', '/grin/', 'GRIN & Payments', 'GRIN'],
+        ['pay', '/pay/', 'Payments', 'Payments'],
     ];
     const bar = document.createElement('div');
     bar.className = 'hub-bar';

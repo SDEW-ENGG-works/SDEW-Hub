@@ -9,8 +9,9 @@
   .xlsx Tally Sales Register       -> Supplementary Bill
   .xls DQMS Batch Details Report   -> DQMS
   .xls SDEW packing list           -> CHEP   (opens on the CHEP Create page)
-  .xls TAFE Payment Clearance      -> GRIN & Payments
-  .xlsx SDEW invoice register      -> GRIN & Payments
+  .xls TAFE Payment Clearance      -> Payments (also feeds GRIN & Payments)
+  .xlsx SDEW invoice register      -> Payments (also feeds GRIN & Payments)
+  .xlsx TAFE SALES DETAILS (GRN)   -> Payments, Sales marking
   .xml Tally export                -> GRIN & Payments
 """
 import os
@@ -19,18 +20,21 @@ import tempfile
 from ..http import ApiError
 
 MODULE_NAMES = {"supp": "Supplementary Bill", "chep": "CHEP Transfer", "dqms": "DQMS Upload", "pos": "POs",
-                "grin": "GRIN & Payments"}
+                "grin": "GRIN & Payments", "pay": "Payments"}
 
 
 def _grin_kind(name, data):
-    """True for files of the GRIN & Payments module: TAFE payment export, invoice register."""
+    """'pay' for files of the Payments module: TAFE payment export, invoice register, TAFE SALES DETAILS."""
     from ..grin.services import payments
+    from ..pay.services import sales
     fd, path = tempfile.mkstemp(suffix=os.path.splitext(name)[1] or ".xls")
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         try:
-            return payments.is_payment_export(path) or payments.is_register(path)
+            if payments.is_payment_export(path) or payments.is_register(path) or sales.locate(path):
+                return True
+            return False
         except Exception:  # noqa: BLE001
             return False
     finally:
@@ -106,9 +110,9 @@ def route_file(name, data):
     elif low.endswith((".xls", ".xlsx", ".xlsm")) or data[:2] == b"PK" or data[:4] == b"\xd0\xcf\x11\xe0":
         kind = "grin" if _grin_kind(name, data) else _excel_kind(name, data)
         if kind == "grin":
-            from ..grin.services.ingest import ingest
+            from ..pay.services.ingest import ingest
             res = ingest(name, data)
-            mod, page = "grin", "/grin/"
+            mod, page = "pay", "/pay/#sales" if res.get("kind", "").startswith("Sales") else "/pay/"
         elif kind in ("supp", "po"):
             from ..supp.services.ingest import ingest
             res = ingest(name, data)
