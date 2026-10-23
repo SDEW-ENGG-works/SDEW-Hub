@@ -18,6 +18,8 @@ for line in open(os.path.join(ROOT, ".env"), encoding="utf-8-sig"):
         env[k.strip()] = v.strip().strip('"').strip("'")
 
 host, port = env.get("SMTP_HOST", ""), int(env.get("SMTP_PORT") or 587)
+if len(sys.argv) > 2:                       # python tools\mail_test.py to@x.com 587  -> try another port
+    port = int(sys.argv[2])
 user, pw = env.get("SMTP_USER", ""), env.get("SMTP_PASS", "")
 sender = env.get("MAIL_FROM") or user
 to = sys.argv[1] if len(sys.argv) > 1 else user
@@ -25,7 +27,7 @@ print(f"Server {host}:{port}  user {user}  from {sender}  to {to}  password {len
 
 step = "connect"
 try:
-    if env.get("SMTP_SSL", "").lower() in ("1", "true", "yes") or port == 465:
+    if port == 465:
         s = smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30)
     else:
         s = smtplib.SMTP(host, port, timeout=30)
@@ -33,6 +35,8 @@ try:
         s.starttls(context=ssl.create_default_context())
         s.ehlo()
     step = "login"
+    if pw != pw.strip() or " " in pw:
+        print("  WARNING: the password has spaces - remove them in .env")
     s.login(user, pw)
     print("  login OK")
     step = "sender (MAIL FROM)"

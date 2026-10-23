@@ -214,7 +214,7 @@ function renderLines() {
             : `<span class="muted">${l.batch_count} batch(es) in report</span>`;
         const checks = [];
         l.problems.forEach(p => checks.push(`<li class="bad-text">${esc(p)}</li>`));
-        if (l.nosize && l.selected) checks.push(`<li class="nosize-text">⚠ No Unit Size on this invoice - left out of the file. Add Unit Size in Tally and drop it again, or type the Invoice Unit.</li>`);
+        if (l.nosize && l.selected) checks.push(`<li class="nosize-text">⚠ No Unit Size on this invoice and no DR PDF - left out of the file. Add Unit Size in Tally, drop the DR PDF, or type the Invoice Unit.</li>`);
         if (l.deferred) checks.push(`<li class="hold-text">Held for the 2nd upload: an earlier invoice in this file uses the same batch. Upload this file, drop a fresh DQMS report, then download again.</li>`);
         (l.notes || []).forEach(n => checks.push(`<li class="warn-text">${esc(n)}</li>`));
         if (first) (l.portal || []).filter(m => m.message).forEach(m => checks.push(

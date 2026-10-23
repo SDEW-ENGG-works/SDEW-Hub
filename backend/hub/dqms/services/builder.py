@@ -108,8 +108,9 @@ def build(selected, edits_in=None):
         else:
             unit0 = 1 if st.get("invoice_unit") == "one" else inv["packages"]
         inv_size = inv.get("unit_size") or None
-        # No "Unit Size" on the invoice: alert and leave it out of the file (a hand-typed Invoice Unit brings it back)
-        nosize = not inv_size and not unit_typed
+        # No "Unit Size" on the invoice and no DR PDF for the part: alert and leave it out of the file
+        # (a loaded DR PDF or a hand-typed Invoice Unit brings it back)
+        nosize_inv = not inv_size and not unit_typed
         # Buyer's Order No. typed wrong in Tally (e.g. 103000676 for 1030000676): match it to a known PO
         order, order_note = inv["order_no"], ""
         if order and order not in plants and not any(k[0] == order for k in items_map):
@@ -157,6 +158,7 @@ def build(selected, edits_in=None):
             unit, unit_src, drrow = unit0, ("typed" if unit_typed else "packages"), drmap.get((dr, it["part"]))
             qty_ = float(it.get("qty") or 0)
             dr_bins = None
+            nosize = nosize_inv and not (drrow and drrow["size"])
             if drrow and drrow["size"]:
                 n = qty_ / drrow["size"]
                 dr_bins = int(round(n)) if abs(n - round(n)) < 1e-6 else None
@@ -298,7 +300,7 @@ def build(selected, edits_in=None):
     if summary.get("nosize"):
         nl = sorted({ln["inv_no"] for ln in lines if ln.get("nosize") and ln["selected"]}, key=inv_sort_key)
         warnings.append(f"{len(nl)} invoice(s) left out - no Unit Size on the invoice: {', '.join(nl)}. "
-                        "Add Unit Size in Tally and drop the invoice again, or type the Invoice Unit by hand.")
+                        "Add Unit Size in Tally and drop the invoice again, drop its DR PDF, or type the Invoice Unit by hand.")
     if summary.get("deferred"):
         dl = sorted({ln["inv_no"] for ln in lines if ln.get("deferred")}, key=inv_sort_key)
         warnings.append(f"{len(dl)} invoice(s) held back for a 2nd upload: {', '.join(dl)}. The same part already uses "
