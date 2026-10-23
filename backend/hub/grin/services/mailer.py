@@ -15,7 +15,8 @@ import smtplib
 import ssl
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+import re
+from email.utils import formataddr, formatdate, make_msgid
 
 from ... import config
 from ..db import get_db, log, one, rows
@@ -125,15 +126,23 @@ def render(d):
     return body, text
 
 
+def _addrs(v):
+    """'a@x.com; b@y.com' / 'a@x.com, b@y.com' -> ['a@x.com', 'b@y.com'] (Yahoo rejects ';' lists)."""
+    return [a for a in re.split(r"[;,\s]+", v or "") if "@" in a]
+
+
 def _message(d, sender, to, cc):
+    """A clean RFC-5322 mail: strict servers (Yahoo) reject a bad Message-ID domain or a ';' address list."""
     msg = EmailMessage()
     msg["Subject"] = d["subject"]
-    msg["From"] = sender or "me@localhost"
-    msg["To"] = to
-    if cc:
-        msg["Cc"] = cc
+    sender = sender or "me@localhost"
+    msg["From"] = formataddr(("Sri Durga Engg. Works", sender))
+    msg["Reply-To"] = sender
+    msg["To"] = ", ".join(_addrs(to))
+    if _addrs(cc):
+        msg["Cc"] = ", ".join(_addrs(cc))
     msg["Date"] = formatdate(localtime=True)
-    msg["Message-ID"] = make_msgid(domain="sdew-hub")
+    msg["Message-ID"] = make_msgid(domain=sender.split("@")[-1])
     msg.set_content(d["text"])
     msg.add_alternative(d["html"], subtype="html")
     return msg
@@ -182,7 +191,8 @@ def send(drafts):
                 results.append(dict(key=d["key"], ok=False, error=d["problem"] or "No e-mail address"))
                 continue
             try:
-                server.send_message(_message(d, m["sender"], to, cc))
+                server.send_message(_message(d, m["sender"], to, cc), from_addr=m["sender"],
+                                    to_addrs=_addrs(to) + _addrs(cc))
                 mid = _record(d, "Sent" if not s["test_to"] else "Test", to, cc)
                 results.append(dict(key=d["key"], ok=True, mail_id=mid, to=to, invoices=len(d["invoices"])))
             except Exception as e:  # noqa: BLE001
