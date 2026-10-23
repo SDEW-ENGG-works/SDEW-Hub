@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS pc_jobs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, params TEXT, status TEXT, log TEXT, error TEXT,
     result TEXT, created_at TEXT, started_at TEXT, finished_at TEXT, host TEXT, updated_ts REAL);
 
+-- ---------- Logins (Admin page) ----------
+CREATE TABLE IF NOT EXISTS users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, pass_hash TEXT, access TEXT, active INTEGER DEFAULT 1,
+    version INTEGER DEFAULT 1, note TEXT, created_at TEXT, updated_at TEXT, last_login TEXT);
+
 -- ---------- Hub ----------
 CREATE TABLE IF NOT EXISTS open_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, module TEXT, title TEXT, detail TEXT,

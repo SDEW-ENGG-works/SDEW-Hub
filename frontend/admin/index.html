@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — SDEW Hub · Admin</title>
+    <link rel="icon" href="/assets/favicon.svg?v=fd66ffa491">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/grin/css/01-base.css">
+    <link rel="stylesheet" href="/grin/css/03-tables.css">
+    <link rel="stylesheet" href="/grin/css/05-ratecard.css">
+    <link rel="stylesheet" href="/grin/css/06-modals.css">
+    <link rel="stylesheet" href="/grin/css/20-supp.css">
+    <link rel="stylesheet" href="/css/hub.css?v=0fd2314c29">
+    <script src="/js/hubbar.js?v=44b57d46c9"></script>
+    <style>
+        .acc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.4rem 1rem; margin: 0.3rem 0 0.8rem; }
+        .acc-grid label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.84rem; cursor: pointer; }
+        .acc-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+        .acc-tag { font-size: 0.7rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+        .users-table td { vertical-align: middle; }
+        .users-table tr.off td { opacity: 0.5; }
+        .row-btns { display: flex; gap: 0.35rem; justify-content: flex-end; flex-wrap: wrap; }
+        .note-hint { font-size: 0.78rem; color: var(--muted); }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <section class="view-section active" id="admin-view">
+            <div class="section-header">
+                <div>
+                    <h2>Admin</h2>
+                    <p class="section-desc">Logins for the SDEW Hub. Each user sees only the pages ticked for them — in the boxes at the top and on the server.</p>
+                </div>
+                <button class="btn btn-primary" onclick="openUser()">+ Create user</button>
+            </div>
+
+            <div class="card">
+                <div class="table-wrapper">
+                    <table class="data-table users-table">
+                        <thead><tr><th>Username</th><th>Pages</th><th>Status</th><th>Last login</th><th>Note</th><th></th></tr></thead>
+                        <tbody id="users-tbody"><tr><td colspan="6" class="muted-cell">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">How logins work</div>
+                <p class="note-hint" id="admin-info"></p>
+                <ul class="note-hint" style="margin:0.4rem 0 0 1.1rem;line-height:1.7">
+                    <li>The admin login comes from <b>ADMIN_USER</b> / <b>ADMIN_PASS</b> in the env (.env on the PC, Environment Variables on Vercel). Only the admin sees this page.</li>
+                    <li>A changed page list counts at once. A new password or switching a user off logs that user out everywhere.</li>
+                    <li>Passwords are stored only as secure hashes - nobody can read them back. Forgotten password: set a new one here.</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop" id="user-modal" onclick="if (event.target === this) closeModal('user-modal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="user-title">Create user</h3>
+                <button class="close-btn" onclick="closeModal('user-modal')">&times;</button>
+            </div>
+            <form id="user-form" autocomplete="off" onsubmit="saveUser(event)">
+                <div class="form-grid-2">
+                    <div class="form-group"><label>Username</label><input type="text" id="u-name" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+                    <div class="form-group"><label id="u-pass-label">Password</label><input type="password" id="u-pass" autocomplete="new-password" placeholder="at least 6 characters"></div>
+                </div>
+                <div class="form-group">
+                    <label>Pages this user can open</label>
+                    <div class="acc-grid" id="u-access"></div>
+                    <div class="btn-row"><button type="button" class="btn btn-outline btn-sm" onclick="tickAll(true)">All</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="tickAll(false)">None</button></div>
+                </div>
+                <div class="form-group"><label>Note (optional)</label><input type="text" id="u-note" placeholder="e.g. Dispatch - CHEP only"></div>
+                <label class="check" id="u-active-row"><input type="checkbox" id="u-active" checked> Active (can log in)</label>
+                <div class="modal-actions" style="margin-top:1rem">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('user-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="u-save">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+    <div id="toast-container"></div>
+
+    <script src="/grin/js/core/utils.js"></script>
+    <script src="js/admin.js?v=f1744bb759"></script>
+</body>
+
+</html>

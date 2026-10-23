@@ -62,12 +62,17 @@ function route() {
     if (k === 'part' && v) return openPart(v);
     if (k === 'po' && v) return openPo(v);
     if (k === 'dr' && v) return openDr(v);
-    go(VIEWS.includes(k) ? k : 'today');
+    if (!k || k === 'home') return;   // the home screen (app icons) is drawn by hubbar.js
+    const mine = (window.HUB_USER && window.HUB_USER.access) || VIEWS;
+    const first = VIEWS.find(v => mine.includes(v)) || 'today';
+    go(VIEWS.includes(k) && mine.includes(k) ? k : first);
 }
 document.addEventListener('DOMContentLoaded', () => {
     initDrop();
     route();
-    if (!location.hash.startsWith('#today') && location.hash) loadToday(true);
+    window.addEventListener('hashchange', route);
+    const mine = (window.HUB_USER && window.HUB_USER.access) || VIEWS;
+    if (!location.hash.startsWith('#today') && location.hash && mine.includes('today')) loadToday(true);
 });
 
 // ------------------------------------------------------------------ Today

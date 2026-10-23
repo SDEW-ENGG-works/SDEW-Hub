@@ -28,14 +28,19 @@ def app(environ, start_response):
     path = environ.get("PATH_INFO", "/") or "/"
     query = environ.get("QUERY_STRING", "")
 
-    if not auth.is_public(path) and not auth.authorised(environ.get("HTTP_COOKIE")):
-        if path.startswith("/api/"):
-            body = b'{"error": "Please log in", "login": true}'
-            start_response("401 Unauthorized", [("Content-Type", "application/json"),
-                                                ("Content-Length", str(len(body)))])
-            return [body]
-        start_response("302 Found", [("Location", "/login.html"), ("Content-Length", "0")])
-        return [b""]
+    who = None
+    if not auth.is_public(path):
+        who = auth.current(environ.get("HTTP_COOKIE"))
+        if not who or not auth.allowed(who, path):
+            if path.startswith("/api/"):
+                body = (b'{"error": "Please log in", "login": true}' if not who else
+                        b'{"error": "Your login does not include this page - ask the admin", "forbidden": true}')
+                start_response("401 Unauthorized" if not who else "403 Forbidden",
+                               [("Content-Type", "application/json"), ("Content-Length", str(len(body)))])
+                return [body]
+            start_response("302 Found", [("Location", "/login.html" if not who else auth.home_for(who)),
+                                         ("Content-Length", "0")])
+            return [b""]
 
     if path.startswith("/api/"):
         oidc = environ.get("HTTP_X_VERCEL_OIDC_TOKEN")
@@ -46,7 +51,9 @@ def app(environ, start_response):
         except ValueError:
             length = 0
         body = environ["wsgi.input"].read(length) if length else b""
-        resp = dispatch(Request(method, path + ("?" + query if query else ""), body))
+        req = Request(method, path + ("?" + query if query else ""), body)
+        req.cookie = environ.get("HTTP_COOKIE") or ""
+        resp = dispatch(req)
         try:  # Turso: send any writes still queued
             from .db import commit_all
             commit_all()
@@ -57,12 +64,12 @@ def app(environ, start_response):
         start_response(f"{resp.status} {'OK' if resp.status < 400 else 'Error'}", headers)
         return [resp.body]
 
-    if path in ("/supp", "/chep", "/dqms", "/grin", "/pay"):
+    if path in ("/supp", "/chep", "/dqms", "/grin", "/pay", "/admin"):
         start_response("301 Moved", [("Location", path + "/"), ("Content-Length", "0")])
         return [b""]
     page = index_page(path)
     if page:
-        html = page[0].encode("utf-8")
+        html = auth.inject_user(page[0], who).encode("utf-8")
         start_response("200 OK", [("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(html))),
                                   ("Cache-Control", "no-cache")])
         return [html]

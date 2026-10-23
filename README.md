@@ -152,3 +152,12 @@ The separate Payment Marking app moved into the hub (`backend/hub/pay/`, `fronte
   28 short/rejected, 2 inspection open, 49 GRN no differs (typed GRN shifted by a row, mostly April), 409 GRIN pending,
   22 not in GRIN data, 331 not a GRIN party. Typed GRN NO agreed with TAFE on 13,170 of 13,219.
 - The old app (`Downloads\SDEW\PaymentMarking`, repo SDEW-ENGG-works/Payment-marking) is retired.
+
+
+## Logins and the Admin page (23-Oct-2026)
+`ADMIN_USER` / `ADMIN_PASS` in the env = the administrator: every page + **Admin** (top right) at `/admin/`.
+On the Admin page: create users (username, password, the pages they may open, note), change pages, set a new password,
+switch a user off, delete. A user sees only their boxes, and the server refuses every other page and `/api/...`
+(403). Users are in the `users` table (PBKDF2 password hashes). The old shared `APP_PASSWORD` still logs in
+(leave the username empty) with every page but no Admin - remove it from the env when everyone has a login.
+Code: `backend/hub/auth.py` (who may open what: `needs()`), `handlers/admin.py`, `frontend/admin/`.

@@ -27,6 +27,7 @@ def status(req):
     lim = min(int(req.arg("limit", "200") or 200), 2000)
     return dict(as_of=data["as_of"], counts=data["counts"], order=data["order"], dates=data["dates"],
                 plants=data["plants"], settings=data["settings"], untracked=data["untracked"],
+                pay_check=data.get("pay_check"),
                 total=len(out), value=round(sum(r["amount"] or 0 for r in out), 2), rows=out[off:off + lim])
 
 

@@ -5,11 +5,14 @@ from ..http import ApiError, Response, route
 @route("POST", r"/api/login")
 def login(req):
     if not auth.enabled():
-        return dict(ok=True)
-    if not auth.check_password(str(req.json.get("password", ""))):
-        raise ApiError("Wrong password", 401)
-    r = Response.json(dict(ok=True))
-    r.headers["Set-Cookie"] = auth.login_cookie(secure=config.ON_VERCEL)
+        return dict(ok=True, home="/")
+    b = req.json
+    name = auth.check_login(str(b.get("username", "")), str(b.get("password", "")))
+    if not name:
+        raise ApiError("Wrong username or password", 401)
+    who = auth._identity(name)
+    r = Response.json(dict(ok=True, home=auth.home_for(who)))
+    r.headers["Set-Cookie"] = auth.login_cookie(name, secure=config.ON_VERCEL)
     return r
 
 
@@ -22,4 +25,6 @@ def logout(req):
 
 @route("GET", r"/api/auth")
 def auth_status(req):
-    return dict(login=auth.enabled())
+    who = auth.current(req.cookie)
+    info = auth.public_info(who) or {}
+    return dict(info, login=auth.enabled(), logged_in=bool(who), shared=bool(auth.shared_password()))

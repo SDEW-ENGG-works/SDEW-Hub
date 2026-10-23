@@ -16,16 +16,28 @@
 <body class="login-page">
     <form class="login-card" id="login-form" autocomplete="on">
         <img class="login-logo" src="assets/sdew-logo.jpg" alt="Sri Durga Engg. Works" width="189" height="40">
-        <div class="login-sub">SDEW Hub — Supplementary Bill · CHEP · DQMS</div>
+        <div class="login-sub">SDEW Hub</div>
+        <div class="form-group">
+            <label for="un">Username</label>
+            <input type="text" id="un" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" autofocus>
+            <div class="login-hint" id="un-hint" style="display:none">Leave empty to use the shared password.</div>
+        </div>
         <div class="form-group">
             <label for="pw">Password</label>
-            <input type="password" id="pw" name="password" autocomplete="current-password" autofocus required>
+            <input type="password" id="pw" name="password" autocomplete="current-password" required>
         </div>
         <div class="login-error" id="login-error"></div>
         <button class="btn btn-primary login-btn" type="submit" id="login-btn">Log in</button>
     </form>
 
+    <style>.login-hint { font-size: 0.72rem; color: var(--dim); margin-top: 0.25rem; }</style>
     <script>
+        fetch('/api/auth').then(r => r.json()).then(a => {
+            if (a.shared) document.getElementById('un-hint').style.display = '';
+            if (a.logged_in && !location.search.includes('none')) location.replace('/');
+            if (location.search.includes('none')) document.getElementById('login-error').textContent =
+                'Your login has no pages yet - ask the admin.';
+        }).catch(() => { });
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('login-btn');
@@ -36,9 +48,10 @@
             try {
                 const res = await fetch('/api/login', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: document.getElementById('pw').value }),
+                    body: JSON.stringify({ username: document.getElementById('un').value.trim(),
+                                           password: document.getElementById('pw').value }),
                 });
-                if (res.ok) { location.replace('/'); return; }
+                if (res.ok) { const d = await res.json().catch(() => ({})); location.replace(d.home || '/'); return; }
                 const d = await res.json().catch(() => ({}));
                 err.textContent = d.error || 'Could not log in';
                 document.getElementById('pw').select();

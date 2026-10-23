@@ -14,9 +14,9 @@
     <link rel="stylesheet" href="css/05-ratecard.css?v=a6e7e5b643">
     <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
     <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
-    <link rel="stylesheet" href="css/40-grin.css?v=9254cc781f">
-    <link rel="stylesheet" href="/css/hub.css?v=a9a7b3c1cd">
-    <script src="/js/hubbar.js?v=d3a0017935"></script>
+    <link rel="stylesheet" href="css/40-grin.css?v=90042a5d33">
+    <link rel="stylesheet" href="/css/hub.css?v=0fd2314c29">
+    <script src="/js/hubbar.js?v=44b57d46c9"></script>
 </head>
 
 <body>
@@ -32,6 +32,10 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
                     Status
                     <span class="badge" id="ng-badge">0</span>
+                </button>
+                <button class="nav-btn" id="nav-monthly-btn" onclick="switchView('monthly')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+                    Monthly report
                 </button>
                 <button class="nav-btn" id="nav-mails-btn" onclick="switchView('mails')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
@@ -73,6 +77,7 @@
                 </div>
             </div>
             <div class="fresh" id="fresh"></div>
+            <div id="paycheck"></div>
             <div id="status-banners"></div>
             <div class="status-cards" id="status-cards"></div>
             <div class="card">
@@ -93,6 +98,27 @@
             </div>
         </section>
 
+        <!-- ============ MONTHLY REPORT ============ -->
+        <section class="view-section" id="monthly-view">
+            <div class="section-header">
+                <div>
+                    <h2>Monthly payment report</h2>
+                    <p class="section-desc">How much TAFE paid in the month - gross, debit notes, cash discount, net - per plant, voucher and invoice, and what is still to come.</p>
+                </div>
+                <div class="header-actions">
+                    <div class="mr-head-sel">
+                        <button class="btn btn-secondary" id="mr-prev" onclick="mrStep(-1)" title="Previous month">‹</button>
+                        <select id="mr-month" onchange="loadMonthly(this.value)"></select>
+                        <button class="btn btn-secondary" id="mr-next" onclick="mrStep(1)" title="Next month">›</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="mrDownload()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Excel
+                    </button>
+                </div>
+            </div>
+            <div id="mr-body"></div>
+        </section>
         <!-- ============ REMINDERS ============ -->
         <section class="view-section" id="mails-view">
             <div class="section-header">
@@ -167,8 +193,21 @@
                 </div>
             </div>
             <div class="card">
-                <div class="card-title"><span class="step-no">3</span>Payments from TAFE (and any other file)</div>
+                <div class="card-header-flex">
+                    <div class="card-title"><span class="step-no">3</span>Payments from TAFE Channel</div>
+                    <span class="status-badge" id="pay-badge">—</span>
+                </div>
                 <dl class="kv" id="pay-kv"></dl>
+                <div class="form-grid-4 align-end">
+                    <div class="form-group"><label>From date</label><input type="date" id="pay-from"></div>
+                    <div class="form-group"><label>To date</label><input type="date" id="pay-to"></div>
+                    <div class="form-group"></div>
+                    <div class="form-group"><button class="btn btn-primary" id="btn-pay" onclick="payFetch()">Fetch payments</button></div>
+                </div>
+                <p class="hint">Account Info › Payment Details, Company TAFE, Fetch, Export – done for you, one month at a time. The same voucher line is never counted twice.
+                    The marked invoice register (INVOICE NO … payment details) can be dropped below: it is checked against TAFE on the Status page.</p>
+                <pre class="log-box" id="pay-log" style="display:none"></pre>
+                <div class="mini-title">Or drop files</div>
                 <label class="dropzone" id="dropzone">
                     <input type="file" id="file-input" multiple accept=".xls,.xlsx,.xml,.htm,.html" onchange="uploadFiles(this.files)">
                     <strong>Drop files here or click to choose</strong>
@@ -298,13 +337,14 @@ MAIL_FROM=accounts@yourdomain.com</code>
 
     <div id="toast-container"></div>
 
-    <script src="js/core/utils.js?v=693527134b"></script>
-    <script src="js/pages/status.js?v=fc4b82d7bc"></script>
+    <script src="js/core/utils.js?v=884e321599"></script>
+    <script src="js/pages/status.js?v=5a3689c874"></script>
+    <script src="js/pages/monthly.js?v=bae81b5016"></script>
     <script src="js/pages/mails.js?v=6ff0368ee7"></script>
-    <script src="js/pages/sources.js?v=831455c3cb"></script>
+    <script src="js/pages/sources.js?v=063fbf2f7b"></script>
     <script src="js/pages/buyers.js?v=beff655b80"></script>
     <script src="js/pages/settings.js?v=9d584640d9"></script>
-    <script src="js/main.js?v=831611b47a"></script>
+    <script src="js/main.js?v=df2c19c5d4"></script>
 </body>
 
 </html>

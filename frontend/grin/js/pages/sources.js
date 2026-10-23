@@ -260,3 +260,44 @@ function pcAgent(a) {
     return a.online ? `<span class="status-badge active">SDEW PC online</span> ${esc(a.host)}`
         : `<span class="status-badge inactive">SDEW PC offline</span> last seen ${esc(when(a.at))} - start start.bat there`;
 }
+
+// ---------- Fetch payments from TAFE Channel ----------
+let _payTimer = null;
+function showPay(st) {
+    const b = document.getElementById('pay-badge');
+    if (st.running) { b.className = 'status-badge sent'; b.textContent = 'Fetching…'; }
+    else if (st.error) { b.className = 'status-badge inactive'; b.textContent = 'Last fetch stopped'; }
+    else if (st.finished) { b.className = 'status-badge active'; b.textContent = `Last fetch ${when(st.finished)}`; }
+    else { b.className = 'status-badge muted'; b.textContent = 'Ready'; }
+    showLog('pay-log', st.log);
+    document.getElementById('btn-pay').disabled = !!st.running;
+}
+async function payFetch() {
+    document.getElementById('btn-pay').disabled = true;
+    showPay({ running: true, log: ['Logging in to TAFE Channel…'] });
+    try {
+        const r = await apiJson('/api/grin/payments/fetch', 'POST', {
+            from: document.getElementById('pay-from').value, to: document.getElementById('pay-to').value });
+        showPay(r);
+        if (r.done) {
+            showToast(r.error ? esc(r.error) : 'Payments loaded from TAFE Channel', r.error ? 'danger' : 'success', 9000);
+            loadSources(true); loadStatus(0);
+            return;
+        }
+        clearInterval(_payTimer);
+        _payTimer = setInterval(async () => {
+            try {
+                const st = await api('/api/grin/payments/fetch');
+                showPay(st);
+                if (!st.running) {
+                    clearInterval(_payTimer);
+                    showToast(st.error ? esc(st.error) : 'Payments loaded (by the SDEW PC)', st.error ? 'danger' : 'success', 9000);
+                    loadSources(true); loadStatus(0);
+                }
+            } catch (e) { clearInterval(_payTimer); }
+        }, 2000);
+    } catch (e) {
+        showPay({ error: e.message, log: [`Stopped: ${e.message}`] });
+        showToast(e.message, 'danger', 9000);
+    }
+}

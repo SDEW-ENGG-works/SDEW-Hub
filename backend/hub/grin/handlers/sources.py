@@ -160,3 +160,44 @@ def tally_done(req):
         f"from {b.get('host') or 'this computer'}")
     st.invalidate()
     return dict(ok=True)
+
+
+# ---- "Fetch payments from TAFE Channel" (Account Info > Payment Details, no browser) ----
+@route("POST", r"/api/payments/fetch")
+def payments_fetch(req):
+    from ..services import pay_portal
+    b = req.json
+    try:
+        d2 = date.fromisoformat(b.get("to") or date.today().isoformat())
+        d1 = date.fromisoformat(b.get("from") or (d2 - timedelta(days=45)).isoformat())
+    except ValueError:
+        raise ApiError("Dates must be yyyy-mm-dd")
+    if d1 > d2:
+        raise ApiError("From date is after To date")
+    if pay_portal.STATUS["running"]:
+        raise ApiError("Already fetching payments - wait for it to finish")
+    st_ = pay_portal.run(d1, d2)
+    out = dict(st_)
+    if out["error"] and config.ON_VERCEL and pay_portal.network_problem(out["error"]):
+        a = pc_jobs.agent_info()
+        if a and a["online"]:     # TAFE Channel answers Indian addresses - the SDEW PC does it
+            q = pc_jobs.queue("pay_fetch", {"from": d1.isoformat(), "to": d2.isoformat()})
+            q["log"] = out["log"] + ["TAFE Channel did not answer this website - asking the SDEW PC instead"] + q["log"]
+            return dict(q, queued=True, done=False)
+    return dict(out, done=True)
+
+
+@route("GET", r"/api/payments/fetch")
+def payments_fetch_status(req):
+    from ..services import pay_portal
+    if config.ON_VERCEL:
+        j = pc_jobs.status("pay_fetch")
+        if j.get("running") or (j.get("started") or "") > (pay_portal.STATUS.get("started") or ""):
+            return j
+    return pay_portal.STATUS
+
+
+@route("GET", r"/api/payments/check")
+def payments_check(req):
+    data = st.build(req.arg("as_of") or None)
+    return data.get("pay_check") or {}

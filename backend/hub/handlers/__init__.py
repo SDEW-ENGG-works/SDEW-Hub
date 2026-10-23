@@ -8,7 +8,7 @@
   /api/grin/...                          GRIN & Payments
   /api/pay/...                           Payments (payment marking + sales GRN marking)
 """
-from . import hub, login  # noqa: F401
+from . import admin, hub, login  # noqa: F401
 from ..supp import handlers as _supp  # noqa: F401
 from ..chep import handlers as _chep  # noqa: F401
 from ..dqms import handlers as _dqms  # noqa: F401

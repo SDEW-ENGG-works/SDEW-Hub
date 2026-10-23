@@ -31,6 +31,7 @@ async function loadStatus(offset = G.offset) {
         const d = await api(`/api/grin/status?${statusQuery({ offset, limit: PAGE })}`);
         G.data = d;
         renderFresh(d);
+        renderPayCheck(d.pay_check);
         renderCards(d);
         renderPlantPills(d);
         tb.innerHTML = d.rows.length ? d.rows.map(rowHtml).join('')
@@ -173,4 +174,20 @@ async function saveNote(k) {
     } catch (e) {
         showToast(e.message, 'danger');
     }
+}
+
+// the hand-marked invoice register checked against TAFE Channel's payments
+function renderPayCheck(c) {
+    const el = document.getElementById('paycheck');
+    if (!c || !(c.agree + c.differ + c.not_marked + c.marked_not_paid)) { el.innerHTML = ''; return; }
+    const bad = c.differ + c.not_marked + c.marked_not_paid;
+    const label = { differ: 'Different voucher', not_marked: 'Paid in TAFE, not marked', marked_not_paid: 'Marked, but TAFE voucher does not have it' };
+    el.innerHTML = `<div class="banner ${bad ? '' : 'info'}"><b>Invoice register vs TAFE Channel:</b> ${inr(c.agree, 0)} agree
+        ${c.differ ? ` · <b>${inr(c.differ, 0)}</b> marked with a different voucher` : ''}
+        ${c.not_marked ? ` · <b>${inr(c.not_marked, 0)}</b> paid in TAFE but not marked` : ''}
+        ${c.marked_not_paid ? ` · <b>${inr(c.marked_not_paid, 0)}</b> marked but not in that TAFE voucher` : ''}
+        ${bad ? ` <a href="#" onclick="document.getElementById('paycheck-list').style.display='';return false">show</a>
+        <div id="paycheck-list" style="display:none;margin-top:0.4rem;max-height:220px;overflow:auto">${c.examples.map(x =>
+            `<div>${esc(label[x.kind] || x.kind)} · <b>${esc(x.inv_no)}</b> · ${esc(x.text)}</div>`).join('')}
+            ${bad > c.examples.length ? `<div>… and ${bad - c.examples.length} more (Download Excel → Checks column)</div>` : ''}</div>` : ''}</div>`;
 }

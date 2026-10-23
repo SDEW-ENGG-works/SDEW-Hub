@@ -24,6 +24,7 @@ class Request:
         self.query = urllib.parse.parse_qs(parsed.query)
         self._body_bytes = body_bytes or b""
         self.params = {}
+        self.cookie = ""          # the Cookie header (set by the server) - who is logged in: auth.current(req.cookie)
 
     def arg(self, name, default=""):
         return self.query.get(name, [default])[0]

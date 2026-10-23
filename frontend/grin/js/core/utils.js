@@ -16,7 +16,7 @@ function inr(n, dec = 2) {
     if (n === null || n === undefined || n === '') return '';
     return (parseFloat(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
-function rupees(n) { return `₹${inr(n)}`; }
+function rupees(n) { return (parseFloat(n) || 0) < 0 ? `− ₹${inr(-n)}` : `₹${inr(n)}`; }
 function qty(n) { return (parseFloat(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 }); }
 
 // 'yyyy-mm-dd' -> '04-Apr-26'

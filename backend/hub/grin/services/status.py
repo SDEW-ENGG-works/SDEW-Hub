@@ -154,6 +154,11 @@ def _build(as_of):
         if x["pv"]:
             reg_pay[x["inv_key"]] = dict(pv=x["pv"], pv_date=x["pv_date"])
 
+    reg_keys = {x["inv_key"] for x in rows("SELECT inv_key FROM gp_register")}
+
+    def rr_has(k):
+        return k in reg_keys
+
     # GRIN
     grin = {}
     for g in rows("SELECT invoice_no, grin_no, grin_date, plant, po_no, grin_qty, accepted_qty, rejected_qty FROM grin_lines"):
@@ -172,7 +177,9 @@ def _build(as_of):
     # payments from the TAFE export
     ignore = {t.upper() for t in s["ignore_doc_types"]}
     pay = {}
+    tafe_pvs = set()
     for p in rows("SELECT * FROM gp_pay_lines ORDER BY pv_date, pv"):
+        tafe_pvs.add(p["pv"])
         if (p["doc_type"] or "").upper() in ignore or not p["inv_key"]:
             continue
         a = pay.setdefault(p["inv_key"], dict(credit=0.0, debit=0.0, pvs=[], pv="", pv_date="", types=[]))
@@ -193,6 +200,13 @@ def _build(as_of):
         sent[m["inv_key"]].append(m["sent_at"])
     notes = {n["inv_key"]: n for n in rows("SELECT * FROM gp_notes")}
     blist = buyers()
+
+    check = dict(agree=0, differ=0, not_marked=0, marked_not_paid=0, examples=[])
+
+    def chk(kind, inv_no, text):
+        check[kind] += 1
+        if kind != "agree" and len(check["examples"]) < 60:
+            check["examples"].append(dict(kind=kind, inv_no=inv_no, text=text))
 
     out = []
     for k, r in inv.items():
@@ -229,6 +243,20 @@ def _build(as_of):
                     msgs.append(f"Paid Rs {py['credit']:,.2f} vs invoice Rs {amount:,.2f} ({(ratio - 1) * 100:+.2f}%)")
         elif rp:
             row.update(pv=rp["pv"], pv_date=rp["pv_date"], paid_by="Invoice register")
+        # the invoice register (marked by hand) checked against what TAFE Channel says
+        if py and py["credit"] > 0 and rr_has(k):
+            if not rp:
+                chk("not_marked", r["inv_no"], f"TAFE paid in {py['pv']} ({py['pv_date']}) - not marked in the register")
+                msgs.append(f"Not marked in the register yet - TAFE paid in {py['pv']}")
+            elif rp["pv"] in py["pvs"]:
+                chk("agree", r["inv_no"], "")
+            else:
+                close = rp["pv"].isdigit() and any(_close(rp["pv"], x) for x in py["pvs"])
+                chk("differ", r["inv_no"], f"register {rp['pv']}, TAFE {', '.join(py['pvs'])}" + (" (typo?)" if close else ""))
+                msgs.append(f"Register has {rp['pv']} but TAFE paid in {', '.join(py['pvs'])}" + (" - looks like a typo" if close else ""))
+        elif rp and rp["pv"] in tafe_pvs and not (py and py["credit"] > 0):
+            chk("marked_not_paid", r["inv_no"], f"register says {rp['pv']}, but that TAFE voucher has no payment for this invoice")
+            msgs.append(f"Register says paid in {rp['pv']}, but TAFE's voucher {rp['pv']} does not include this invoice")
         paid = bool(row["pv"])
 
         if paid:
@@ -284,11 +312,26 @@ def _build(as_of):
     per_plant = defaultdict(lambda: defaultdict(int))
     for r in out:
         per_plant[r["plant"]][r["status"]] += 1
-    return dict(as_of=as_of, rows=out, counts=counts, order=ORDER, dates=dates,
+    return dict(as_of=as_of, rows=out, counts=counts, order=ORDER, dates=dates, pay_check=check,
                 plants=[dict(plant=k, **v) for k, v in sorted(per_plant.items())],
                 settings=dict(wait_days=s["wait_days"], credit_days=s["credit_days"], from_date=s["from_date"]),
                 untracked=[p["code"] for p in pl if p["party"] not in tracked_party],
                 built_at=datetime.now().isoformat(timespec="seconds"))
+
+
+def _close(a, b):
+    """True when two voucher numbers differ by one typed digit (1383032039 vs 138032039)."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1] <= 1
 
 
 def filtered(data, status="", plant="", q="", buyer=""):

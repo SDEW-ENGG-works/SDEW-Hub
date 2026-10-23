@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const today = new Date();
     const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     const back = new Date(today.getTime() - 45 * 86400000);
-    ['tally', 'grin'].forEach(k => {
+    ['tally', 'grin', 'pay'].forEach(k => {
         document.getElementById(`${k}-from`).value = iso(back);
         document.getElementById(`${k}-to`).value = iso(today);
     });
@@ -20,6 +20,7 @@ function switchView(name) {
     document.getElementById(`${name}-view`).classList.add('active');
     document.getElementById(`nav-${name}-btn`).classList.add('active');
     if (name === 'status') loadStatus();
+    else if (name === 'monthly') loadMonthly();
     else if (name === 'mails') loadMails();
     else if (name === 'sources') loadSources();
     else if (name === 'buyers') loadBuyers();

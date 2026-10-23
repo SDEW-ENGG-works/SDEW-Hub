@@ -32,7 +32,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _api(self):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
-        resp = dispatch(Request(self.command, self.path, body))
+        req = Request(self.command, self.path, body)
+        req.cookie = self.headers.get("Cookie") or ""
+        resp = dispatch(req)
         if config.db_mode() == "cloud":
             try:  # Turso: send any writes still queued
                 from .db import commit_all
@@ -48,20 +50,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(resp.body)
 
     def _blocked(self):
-        """True (and answered) when a password is set and this browser has not logged in."""
+        """True (and answered) when this browser is not logged in, or the user may not open this page."""
         path = self.path.split("?")[0]
-        if auth.is_public(path) or auth.authorised(self.headers.get("Cookie")):
+        if auth.is_public(path):
+            return False
+        who = auth.current(self.headers.get("Cookie"))
+        if who and auth.allowed(who, path):
+            self._who = who
             return False
         if path.startswith("/api/"):
-            body = b'{"error": "Please log in", "login": true}'
-            self.send_response(401)
+            body = (b'{"error": "Please log in", "login": true}' if not who else
+                    b'{"error": "Your login does not include this page - ask the admin", "forbidden": true}')
+            self.send_response(401 if not who else 403)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
         else:
             self.send_response(302)
-            self.send_header("Location", "/login.html")
+            self.send_header("Location", "/login.html" if not who else auth.home_for(who))
             self.send_header("Content-Length", "0")
             self.end_headers()
         return True
@@ -72,7 +79,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/api/"):
             return self._api()
         p = self.path.split("?")[0]
-        if p in ("/supp", "/chep", "/dqms", "/grin", "/pay"):
+        if p in ("/supp", "/chep", "/dqms", "/grin", "/pay", "/admin"):
             self.send_response(301)
             self.send_header("Location", p + "/")
             self.send_header("Content-Length", "0")
@@ -80,7 +87,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         page = index_page(self.path)
         if page:
-            body = page[0].encode("utf-8")
+            body = auth.inject_user(page[0], getattr(self, "_who", None)).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

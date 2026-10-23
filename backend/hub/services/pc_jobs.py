@@ -23,7 +23,7 @@ POLL = 4
 BEAT = 20
 ONLINE = 75       # PC counts as online if it said so within this many seconds
 STALE = 180       # a queued/running job not touched for this long -> given up
-KINDS = ("tally_pull", "grin_fetch", "dqms_report")
+KINDS = ("tally_pull", "grin_fetch", "dqms_report", "pay_fetch")
 _on = False
 
 
@@ -113,7 +113,10 @@ def _run(job):
         _push(job["id"], dict(mod.STATUS), final=True)
         return
     d1, d2 = date.fromisoformat(p["from"]), date.fromisoformat(p["to"])
-    if job["kind"] == "tally_pull":
+    if job["kind"] == "pay_fetch":
+        from ..grin.services import pay_portal
+        mod, started = pay_portal, pay_portal.start(d1, d2)
+    elif job["kind"] == "tally_pull":
         from ..grin.services import tally
         from ..grin.services.defaults import load_settings, plants
         s = load_settings()
