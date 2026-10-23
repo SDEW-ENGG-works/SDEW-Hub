@@ -108,3 +108,8 @@
 .leap-errors ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
 #leap-log { max-height: 300px; min-height: 120px; margin-top: 0; }
 @media (max-width: 900px) { .leap-grid { grid-template-columns: 1fr; } .stats-grid.three { grid-template-columns: 1fr; } }
+
+/* LEAP live view */
+.leap-live { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 0.8rem; background: #111; }
+.leap-live-head { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); padding: 0.35rem 0.7rem; background: var(--surface, #f7f7f8); }
+.leap-live img { display: block; width: 100%; height: auto; }

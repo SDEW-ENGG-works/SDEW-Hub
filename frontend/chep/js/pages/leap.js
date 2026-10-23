@@ -86,7 +86,6 @@ function renderLeap(d) {
     note.style.display = pcOn || cloud ? '' : 'none';
     if (pcOn) note.querySelector('span').innerHTML = `The upload runs on the SDEW PC <b>${esc(d.agent.host)}</b> — you can follow every step and press Submit from here.`;
     if (cloud) note.querySelector('span').innerHTML = `The upload runs in a <b>cloud browser on Vercel</b> — no PC needed. Follow every step and press Submit here.`;
-    document.getElementById('leap-headed-text').textContent = d.remote ? (d.runner === 'cloud' ? 'Show the LEAP browser window (only when the SDEW PC does it)' : 'Show the LEAP browser window on the SDEW PC') : 'Show the LEAP browser window';
     const busy = ['running', 'waiting'].includes(s.phase);
     document.getElementById('btn-leap-upload').disabled = !d.available || busy;
     document.getElementById('btn-leap-verify').disabled = !d.available || busy;
@@ -128,6 +127,9 @@ function renderLeap(d) {
             </div>`;
     } else box.style.display = 'none';
 
+    _leapLive = { busy, phase: s.phase };
+    refreshLeapShot();
+
     const log = document.getElementById('leap-log');
     log.textContent = (s.log || []).join('\n');
     log.scrollTop = log.scrollHeight;
@@ -161,4 +163,29 @@ function renderLeapVerify(v, retryId) {
             <td class="sku-list">${esc(fmt(l.expected))}</td><td class="sku-list">${esc(fmt(l.found))}</td>
             <td class="sku-list">${esc((l.documents || []).join(', '))}</td></tr>`).join('')
         : `<tr><td colspan="7" class="muted-cell">${f === 'problems' ? 'No problems — every invoice is in LEAP' : 'Nothing to show'}</td></tr>`;
+}
+
+
+// ---- live view: screenshots of the hidden LEAP browser (works for whoever opens this page,
+// whether the PC or the cloud browser does the upload)
+let _leapLive = { busy: false, phase: 'idle' };
+let _leapShotUrl = null, _leapShotBusy = false, _leapShotAt = 0;
+async function refreshLeapShot(force) {
+    const box = document.getElementById('leap-live-box');
+    const want = document.getElementById('leap-headed').checked && _leapLive.phase && _leapLive.phase !== 'idle';
+    if (!want) { box.style.display = 'none'; return; }
+    if (_leapShotBusy || (!force && !_leapLive.busy && _leapShotUrl && Date.now() - _leapShotAt < 15000)) return;
+    _leapShotBusy = true;
+    try {
+        const r = await fetch('/api/chep/leap/shot?t=' + Date.now(), { cache: 'no-store' });
+        if (r.status === 200) {
+            const url = URL.createObjectURL(await r.blob());
+            document.getElementById('leap-live').src = url;
+            if (_leapShotUrl) URL.revokeObjectURL(_leapShotUrl);
+            _leapShotUrl = url;
+            _leapShotAt = Date.now();
+            document.getElementById('leap-live-time').textContent = new Date().toLocaleTimeString();
+            box.style.display = '';
+        } else if (!_leapShotUrl) box.style.display = 'none';
+    } catch (e) { /* next poll */ } finally { _leapShotBusy = false; }
 }

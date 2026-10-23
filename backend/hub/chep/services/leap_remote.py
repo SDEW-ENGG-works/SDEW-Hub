@@ -260,6 +260,37 @@ def _commit():
     get_db().commit()
 
 
+SHOT_SQL = "CREATE TABLE IF NOT EXISTS leap_shots(job_id INTEGER PRIMARY KEY, ts REAL, jpg BLOB)"
+
+
+def _push_shot(jid, jpg):
+    """Newest screenshot of the LEAP page -> leap_shots (one row per job), for the website's live view."""
+    sql = ("INSERT INTO leap_shots(job_id, ts, jpg) VALUES(?,?,?) "
+           "ON CONFLICT(job_id) DO UPDATE SET ts=excluded.ts, jpg=excluded.jpg")
+    con = get_db()
+    try:
+        con.execute(sql, (jid, time.time(), jpg))
+        con.commit()
+    except Exception as e:  # noqa: BLE001
+        if "no such table" not in str(e).lower():
+            raise
+        con.execute(SHOT_SQL)
+        con.execute(sql, (jid, time.time(), jpg))
+        con.commit()
+
+
+def latest_shot():
+    """(jpg bytes or None) of the latest job - read by the website."""
+    j = latest_job()
+    if not j:
+        return None
+    try:
+        r = one("SELECT jpg FROM leap_shots WHERE job_id=?", (j["id"],))
+    except Exception:  # noqa: BLE001 - table not made yet
+        return None
+    return bytes(r["jpg"]) if r and r["jpg"] else None
+
+
 def _follow_once(jid, mem):
     """Pass Submit/Cancel from leap_jobs to leap.py and copy leap.py's state into leap_jobs.
     Returns True while the job is still going."""
@@ -275,6 +306,9 @@ def _follow_once(jid, mem):
         except RuntimeError:
             pass
     going = bool(leap.STATE.get("active")) and leap.STATE.get("phase") in ("running", "waiting")
+    if leap.SHOT["jpg"] and leap.SHOT["seq"] != mem.get("seq"):
+        _push_shot(jid, leap.SHOT["jpg"])
+        mem["seq"] = leap.SHOT["seq"]
     text = json.dumps(leap.snapshot())
     now = time.time()
     if text != mem.get("text") or now - mem.get("at", 0) > 15 or not going:

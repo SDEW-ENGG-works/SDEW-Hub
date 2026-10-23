@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS templates(
 CREATE TABLE IF NOT EXISTS leap_jobs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, mode TEXT, headed INTEGER, status TEXT,
     state TEXT, decision TEXT, created_at TEXT, updated_ts REAL);
+CREATE TABLE IF NOT EXISTS leap_shots(job_id INTEGER PRIMARY KEY, ts REAL, jpg BLOB);
 
 -- ---------- DQMS Upload ----------
 CREATE TABLE IF NOT EXISTS invoices(

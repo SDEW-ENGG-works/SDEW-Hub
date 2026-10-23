@@ -1,7 +1,7 @@
 import json
 
 from ..db import one
-from ..http import ApiError, route
+from ..http import ApiError, Response, route
 from .. import config
 from ..services import leap, leap_remote as remote
 
@@ -64,3 +64,12 @@ def run_result(req):
         raise ApiError("Not found", 404)
     r["leap_result"] = json.loads(r["leap_result"] or "{}")
     return r
+
+
+@route("GET", r"/api/leap/shot")
+def shot(req):
+    """Live view: the newest screenshot of the LEAP page (204 when there is none yet)."""
+    jpg = remote.latest_shot() if _remote() else leap.SHOT.get("jpg")
+    if not jpg:
+        return Response(b"", status=204, content_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    return Response(bytes(jpg), content_type="image/jpeg", headers={"Cache-Control": "no-store"})

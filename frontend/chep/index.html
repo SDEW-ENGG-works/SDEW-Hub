@@ -241,7 +241,7 @@
             <div class="card">
                 <div class="form-grid-4 align-end">
                     <div class="form-group span-2"><label>CHEP file (from History)</label><select id="leap-run"></select></div>
-                    <div class="form-group"><label class="check"><input type="checkbox" id="leap-headed"> <span id="leap-headed-text">Show the LEAP browser window</span></label></div>
+                    <div class="form-group"><label class="check"><input type="checkbox" id="leap-headed" checked onchange="refreshLeapShot(true)"> <span id="leap-headed-text">Show the LEAP browser here (live view)</span></label></div>
                     <div class="form-group">
                         <div class="btn-row">
                             <button class="btn btn-primary" id="btn-leap-upload" onclick="startLeap('upload')">Upload to LEAP</button>
@@ -261,6 +261,10 @@
                     <ol class="leap-steps" id="leap-steps"></ol>
                     <div>
                         <div id="leap-submit-box" style="display:none;"></div>
+                        <div class="leap-live" id="leap-live-box" style="display:none;">
+                            <div class="leap-live-head"><span>LEAP browser — live view</span><span id="leap-live-time"></span></div>
+                            <img id="leap-live" alt="LEAP page">
+                        </div>
                         <pre class="log-box" id="leap-log"></pre>
                     </div>
                 </div>

@@ -37,11 +37,16 @@ VERIFY_TRIES = 4              # report re-downloaded if invoices are still missi
 VERIFY_GAP = int(os.environ.get("LEAP_VERIFY_GAP") or 60)
 
 _lock = threading.Lock()
+# Live view: the newest screenshot of the LEAP page (JPEG). Shown on the LEAP page of whoever is
+# looking - the browser itself always runs hidden (headless) on the machine doing the job.
+SHOT = {"ts": 0.0, "jpg": None, "seq": 0}
+_PAGE = {"page": None, "thread": None}
 _decision = threading.Event()
 STATE = {}
 
 
 def _reset(**kw):
+    SHOT.update(ts=0.0, jpg=None)
     STATE.clear()
     STATE.update(active=True, phase="running", run_id=None, file_name="", mode="", headed=False,
                  started=datetime.now().isoformat(timespec="seconds"), finished="", error="",
@@ -74,6 +79,33 @@ def _log(msg):
     print("[LEAP]", msg)
 
 
+def _snap(force=False):
+    """Screenshot of the LEAP page for the live view (only from the worker thread, max 1 a second)."""
+    page = _PAGE["page"]
+    if page is None or threading.current_thread() is not _PAGE["thread"]:
+        return
+    now = time.time()
+    if not force and now - SHOT["ts"] < 1.0:
+        return
+    try:
+        SHOT["jpg"] = page.screenshot(type="jpeg", quality=50)
+        SHOT["ts"] = now
+        SHOT["seq"] += 1
+    except Exception:  # noqa: BLE001 - page busy / navigating: next time
+        pass
+
+
+def _wait(page, ms):
+    """page.wait_for_timeout in small pieces, keeping the live view fresh."""
+    end = time.time() + ms / 1000.0
+    while True:
+        left = end - time.time()
+        if left <= 0:
+            break
+        page.wait_for_timeout(int(min(left, 1.0) * 1000))
+        _snap()
+
+
 def _step(key, label=None, status=None, detail=None):
     for s in STATE["steps"]:
         if s["key"] == key:
@@ -87,6 +119,7 @@ def _step(key, label=None, status=None, detail=None):
         s["status"] = status
     if detail is not None:
         s["detail"] = detail
+    _snap(force=True)
     return s
 
 
@@ -176,9 +209,11 @@ def _worker(run_id, mode, headed):
         _step("verify", "Check every invoice")
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=not headed)
+            # always hidden: the person watches it in the live view on the LEAP page instead
+            browser = p.chromium.launch(headless=True)
             ctx = browser.new_context(accept_downloads=True, viewport={"width": 1400, "height": 900})
             page = ctx.new_page()
+            _PAGE.update(page=page, thread=threading.current_thread())
             api_log = []
             page.on("response", lambda r: api_log.append(r) if "bulkTROut" in r.url else None)
             try:
@@ -211,6 +246,8 @@ def _worker(run_id, mode, headed):
                     pass
                 raise
             finally:
+                _snap(force=True)
+                _PAGE.update(page=None, thread=None)
                 browser.close()
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
@@ -237,7 +274,7 @@ def _login(page):
     _step("login", status="doing")
     _log("Opening my.leap-india.com")
     page.goto(BASE + "/", wait_until="domcontentloaded")
-    page.wait_for_timeout(1500)
+    _wait(page, 1500)
     if page.locator("#empCode").count():
         page.fill("#empCode", env["LEAP_USER"])
         page.fill("#password", env["LEAP_PASS"])
@@ -286,17 +323,17 @@ def _upload_and_submit(page, i, path, expected, api_log):
     _log(f"Opening Bulk Transfer Out ({os.path.basename(path)})")
     page.goto(BASE + "/bulk-transfer-out", wait_until="domcontentloaded")
     page.locator("button", has_text="UPLOAD FILE").first.wait_for(timeout=60_000)
-    page.wait_for_timeout(1000)
+    _wait(page, 1000)
     if (_counts(page).get("all") or 0) > 0:
         _log("Clearing the rows left on the page")
         page.locator("button", has_text="CLEAR UPLOAD").first.click()
         _click_confirm_if_any(page, 3000)
-        page.wait_for_timeout(1000)
+        _wait(page, 1000)
     page.set_input_files("input[type=file]", path)
     _log("File given to LEAP - waiting for it to read the rows")
     last, stable, t0 = None, 0, time.time()
     while time.time() - t0 < 180:
-        page.wait_for_timeout(1000)
+        _wait(page, 1000)
         c = _counts(page)
         if c["all"] and c == last:
             stable += 1
@@ -314,7 +351,7 @@ def _upload_and_submit(page, i, path, expected, api_log):
     if c["error"]:
         try:
             page.locator("button", has_text=re.compile(r"^\s*ERROR")).first.click()
-            page.wait_for_timeout(1000)
+            _wait(page, 1000)
             part["errors"] = [t.replace("\n", " | ")[:300] for t in
                               page.locator(".ant-table-tbody tr.ant-table-row").all_inner_texts()[:60]]
             page.locator("button", has_text=re.compile(r"^\s*ALL")).first.click()
@@ -334,7 +371,11 @@ def _upload_and_submit(page, i, path, expected, api_log):
     STATE["decision"] = None
     _decision.clear()
     _log("Waiting for your OK to submit")
-    if not _decision.wait(CONFIRM_WAIT):
+    _snap(force=True)
+    t_wait = time.time()
+    while not _decision.is_set() and time.time() - t_wait < CONFIRM_WAIT:
+        _decision.wait(2)
+    if not _decision.is_set():
         STATE["decision"] = "cancel"
         _log("No answer in 30 minutes")
     STATE["phase"] = "running"
@@ -380,7 +421,7 @@ def _wait_job(page):
     while time.time() - t0 < JOB_WAIT:
         if _cancelled():
             raise _Stop()
-        page.wait_for_timeout(5000)
+        _wait(page, 5000)
         try:
             text = " ".join(page.locator("main").inner_text().split())
         except Exception:  # noqa: BLE001
@@ -401,10 +442,10 @@ def _wait_job(page):
 def _download_report(page, out_dir):
     page.goto(BASE + "/reports", wait_until="domcontentloaded")
     page.locator(".ant-select").first.wait_for(timeout=60_000)
-    page.wait_for_timeout(800)
+    _wait(page, 800)
     page.locator(".ant-select").last.click()
     page.locator(".ant-select-item-option", has_text=re.compile(rf"^\s*{re.escape(REPORT_NAME)}\s*$", re.I)).first.click()
-    page.wait_for_timeout(500)
+    _wait(page, 500)
     with page.expect_download(timeout=180_000) as dl:
         page.locator("button", has_text="Download Report").first.click()
     d = dl.value
@@ -432,7 +473,7 @@ def _verify(page, run, run_rows, out_dir):
             break
         _step("verify", detail=f"{res['missing']} invoice(s) not in the report yet - checking again in {VERIFY_GAP} s")
         _log(f"{res['missing']} not in the report yet - LEAP may still be processing")
-        page.wait_for_timeout(VERIFY_GAP * 1000)
+        _wait(page, VERIFY_GAP * 1000)
     status = "verified" if not (res["missing"] or res["short"] or res["extra"]) else "problems"
     detail = (f"All {res['confirmed']} invoices confirmed" if status == "verified" else
               f"{res['confirmed']} confirmed · {res['missing']} missing · {res['short']} short · {res['extra']} extra")
