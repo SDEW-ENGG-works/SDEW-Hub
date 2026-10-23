@@ -50,3 +50,5 @@
 .hold-text { color: #1d5fa8; font-weight: 600; }
 
 .nosize-text { color: #b45309; font-weight: 700; }
+
+.upload-ind { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }

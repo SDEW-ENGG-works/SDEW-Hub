@@ -74,6 +74,22 @@ def report_info():
     return get_setting("dqms_report") or {}
 
 
+def upload_info(invs=None):
+    """How many invoices and DRs are loaded - shown next to the DQMS report line."""
+    invs = load_invoices() if invs is None else invs
+    drs = rows("SELECT dr_no, part, uploaded_at FROM delivery_requests")
+    dr_set = {r["dr_no"] for r in drs}
+    inv_drs = {d for i in invs for d in (i["drs"] or [])}
+    return dict(
+        invoices=len(invs),
+        invoices_pending=sum(1 for i in invs if not i["run_id"]),
+        invoices_with_size=sum(1 for i in invs if i.get("unit_size")),
+        invoices_last=max((i["uploaded_at"] or "" for i in invs), default=""),
+        drs=len(dr_set), dr_lines=len(drs),
+        drs_last=max((r["uploaded_at"] or "" for r in drs), default=""),
+        invoice_drs=len(inv_drs), invoice_drs_loaded=len(inv_drs & dr_set))
+
+
 def build(selected, edits_in=None):
     """selected: invoice numbers to put in the file (in invoice-number order).
     edits_in: {inv_no: {dr, reason, remarks, unit}} not yet saved (the page sends what is on screen)."""
@@ -310,7 +326,8 @@ def build(selected, edits_in=None):
     if summary["in_file"]:
         warnings.append(f"{summary['in_file']} ticked invoice(s) were already put in an earlier file (History). "
                         "Only send them again if that upload failed.")
-    return dict(lines=lines, rows=out_rows, warnings=warnings, summary=summary, report=rep, selected=sorted(sel),
+    return dict(lines=lines, rows=out_rows, warnings=warnings, summary=summary, report=rep, uploads=upload_info(invs),
+                selected=sorted(sel),
                 header=st["header"], settings=st)
 
 

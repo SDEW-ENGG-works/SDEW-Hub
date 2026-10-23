@@ -192,10 +192,10 @@ body.hub-on-home { background: linear-gradient(180deg, #eef3f9 0%, #f7f9fc 55%, 
 .hub-appbar { position: sticky; top: 0; z-index: 900; background: var(--card); border-bottom: 1px solid var(--line); box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04); }
 .hub-appbar-in { max-width: 1360px; margin: 0 auto; padding: 0 1.25rem; height: 56px; display: flex; align-items: center; gap: 0.7rem; }
 .hub-back {
-    display: inline-flex; align-items: center; gap: 0.2rem; text-decoration: none; color: var(--accent); font-weight: 650; font-size: 0.9rem;
-    padding: 0.4rem 0.7rem 0.4rem 0.35rem; border-radius: 10px;
+    display: inline-flex; align-items: center; gap: 0.4rem; text-decoration: none; color: var(--accent); font-weight: 650; font-size: 0.88rem;
+    padding: 0.42rem 0.8rem; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--card);
 }
-.hub-back:hover { background: var(--accent-soft); }
+.hub-back:hover { background: var(--accent-soft); border-color: var(--accent); }
 .hub-appbar-title { display: inline-flex; align-items: center; gap: 0.55rem; font-weight: 700; font-size: 1.05rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hub-app-ic.sm { width: 32px; height: 32px; border-radius: 9px; box-shadow: none; flex: 0 0 auto; }
 .hub-app-ic.sm svg { width: 18px; height: 18px; }
@@ -217,7 +217,8 @@ body.hub-on-home { background: linear-gradient(180deg, #eef3f9 0%, #f7f9fc 55%, 
     .hub-home-brand img { height: 64px; }
     .hub-home-brand h1 { font-size: 1.6rem; }
     .hub-appbar-in { padding: 0 0.6rem; gap: 0.4rem; }
-    .hub-back span, .hub-appbar-logo, .hub-appbar .hub-user { display: none; }
+    .hub-appbar-logo, .hub-appbar .hub-user { display: none; }
+    .hub-back { padding: 0.38rem 0.6rem; }
     .hub-appbar-title { font-size: 0.95rem; }
 }
 

@@ -10,18 +10,19 @@ async function uploadFiles(fileList, poPage) {
     if (!files.length) return;
     const sub = document.getElementById('dropzone-sub');
     const said = [];
-    let newInvoices = [];
+    let newInvoices = [], readAgain = 0, drsRead = [];
     for (const [i, f] of files.entries()) {
         sub.textContent = `Reading ${f.name} (${i + 1} of ${files.length})…`;
         try {
             const r = await api(`/api/dqms/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
             if (r.kind === 'invoices') {
                 newInvoices = newInvoices.concat(r.new);
+                readAgain += r.updated.length;
                 if (r.updated.length) said.push(`${r.updated.join(', ')} read again`);
             } else if (r.kind === 'report') {
                 said.push(`DQMS report: ${r.batches} batches of ${r.parts} parts`);
             } else if (r.kind === 'drs') {
-                said.push(`Delivery Request ${r.drs.join(', ')}`);
+                drsRead = drsRead.concat(r.drs);
             } else if (r.kind === 'po') {
                 said.push(`PO ${r.po_no}: ${r.items} line items`);
             } else if (r.kind === 'status') {
@@ -33,8 +34,9 @@ async function uploadFiles(fileList, poPage) {
             showToast(e.message, 'danger', 8000);
         }
     }
+    if (drsRead.length) said.unshift(`${[...new Set(drsRead)].length} DR(s) uploaded: ${[...new Set(drsRead)].join(', ')}`);
+    if (newInvoices.length || readAgain) said.unshift(`${newInvoices.length + readAgain} invoice(s) uploaded` + (newInvoices.length ? ` (${newInvoices.length} new)` : ''));
     if (newInvoices.length) {
-        said.unshift(`${newInvoices.length} new invoice(s)`);
         if (appState.selected) newInvoices.forEach(n => appState.selected.add(n));
     }
     if (said.length) showToast(said.map(esc).join('<br>'), 'success', 6000);
@@ -65,6 +67,7 @@ async function runPreview() {
     const s = appState.preview.summary;
     document.getElementById('btn-generate').disabled = !s.invoices || s.blocked > 0;
     renderReport();
+    renderUploads();
     renderStats();
     renderWarnings();
     renderLinePills();
@@ -81,6 +84,23 @@ function renderReport() {
         : `<span class="status-badge inactive">No DQMS report</span> Download "DQMS Batch Details Report" (Part Number ALL) from TAFE Channel and drop it above.`;
     el.innerHTML += ` <button class="btn btn-outline btn-sm" id="btn-dqms-fetch" onclick="fetchDqms()" title="Logs in to TAFE Channel, opens Batch Details Report (DQMS), Part Number ALL, Fetch, Export as Excel">⟳ Get latest DQMS report from TAFE Channel</button>`;
     if (_dqmsPoll) setDqmsBusy(true);
+}
+
+// Invoices and DRs loaded - shown under the DQMS report line, like the report's own indicator.
+function renderUploads() {
+    const u = appState.preview.uploads || {};
+    const el = document.getElementById('report-strip');
+    if (!el) return;
+    const inv = u.invoices
+        ? `<span class="status-badge active">Invoices</span> <b>${inr(u.invoices, 0)}</b> loaded · ${inr(u.invoices_pending, 0)} not in a file yet`
+          + ` · ${inr(u.invoices_with_size, 0)} with Unit Size` + (u.invoices_last ? ` · last loaded ${esc(when(u.invoices_last))}` : '')
+        : `<span class="status-badge inactive">No invoices</span> Drop the invoice PDFs above.`;
+    const dr = u.drs
+        ? `<span class="status-badge active">DRs</span> <b>${inr(u.drs, 0)}</b> loaded (${inr(u.dr_lines, 0)} part lines)`
+          + (u.invoice_drs ? ` · ${inr(u.invoice_drs_loaded, 0)} of ${inr(u.invoice_drs, 0)} invoice DRs have their PDF` : '')
+          + (u.drs_last ? ` · last loaded ${esc(when(u.drs_last))}` : '')
+        : `<span class="status-badge inactive">No DRs</span> Optional - drop DR PDFs to check bins and qty gaps.`;
+    el.insertAdjacentHTML('beforeend', `<div class="upload-ind">${inv}</div><div class="upload-ind">${dr}</div>`);
 }
 
 // "Get latest DQMS report": logs in to TAFE Channel with plain web requests (no browser), on the PC and the website.

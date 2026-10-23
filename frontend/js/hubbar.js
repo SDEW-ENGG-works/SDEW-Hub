@@ -62,9 +62,9 @@
     function drawBar() {
         const a = current();
         bar.innerHTML = `<div class="hub-appbar-in">
-            <a class="hub-back" href="/" id="hub-back" title="Back to all apps">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                <span>Back</span></a>
+            <a class="hub-back" href="/" id="hub-back" title="Home - all apps">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
+                <span>Home</span></a>
             <span class="hub-appbar-title">${a ? `<span class="hub-app-ic sm" style="--c:${a[3]}">${a[4]}</span>${a[2]}` : 'SDEW Hub'}</span>
             <span class="hub-spacer"></span>
             <img class="hub-appbar-logo" src="/assets/sdew-logo.jpg" alt="Sri Durga Engg. Works">
