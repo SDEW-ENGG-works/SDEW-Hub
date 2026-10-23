@@ -87,7 +87,15 @@ def upload_info(invs=None):
         invoices_last=max((i["uploaded_at"] or "" for i in invs), default=""),
         drs=len(dr_set), dr_lines=len(drs),
         drs_last=max((r["uploaded_at"] or "" for r in drs), default=""),
-        invoice_drs=len(inv_drs), invoice_drs_loaded=len(inv_drs & dr_set))
+        invoice_drs=len(inv_drs), invoice_drs_loaded=len(inv_drs & dr_set),
+        last_invoices=_last_upload("invoices", {i["inv_no"] for i in invs}), last_drs=_last_upload("drs", dr_set))
+
+
+def _last_upload(kind, still_there):
+    """The latest upload of this kind, without items removed since (Start fresh, Remove)."""
+    cur = get_setting(f"last_upload_{kind}") or {}
+    items = [x for x in cur.get("items", []) if x in still_there]
+    return dict(at=cur.get("at", ""), items=items) if items else {}
 
 
 def build(selected, edits_in=None):

@@ -15,14 +15,34 @@ def _now():
     return datetime.now().isoformat(timespec="seconds")
 
 
-def ingest(name, data):
+def _note_upload(kind, items, batch):
+    """Keep the invoices / DRs of the latest upload (one drop of files = one batch). Without a batch id,
+    files that come within 2 minutes of each other count as one upload."""
+    key = f"last_upload_{kind}"
+    cur = get_setting(key) or {}
+    now = _now()
+    if batch:
+        same = cur.get("batch") == batch
+    else:
+        try:
+            same = not cur.get("batch") and (datetime.fromisoformat(now) - datetime.fromisoformat(cur["at"])).total_seconds() < 120
+        except (KeyError, TypeError, ValueError):
+            same = False
+    keep = cur.get("items", []) if same else []
+    set_setting(key, dict(batch=batch or "", at=now, items=list(dict.fromkeys(keep + list(items))),
+                          files=(cur.get("files", 0) if same else 0) + 1))
+
+
+def ingest(name, data, batch=None):
     low = name.lower()
     if data[:5] == b"%PDF-" or low.endswith(".pdf"):
         try:
             is_dr = dr_pdf.looks_like_dr(dr_pdf.first_page_text(data))
         except Exception:  # noqa: BLE001
             is_dr = False
-        return _drs(name, data) if is_dr else _invoices(name, data)
+        res = _drs(name, data) if is_dr else _invoices(name, data)
+        _note_upload("drs" if is_dr else "invoices", res["drs"] if is_dr else res["new"] + res["updated"], batch)
+        return res
     if low.endswith((".htm", ".html")) or data[:200].lstrip().lower().startswith((b"<html", b"<!doctype")):
         r = po.import_htm(name, data)
         if r:

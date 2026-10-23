@@ -11,7 +11,7 @@ def upload(req):
     data = req._body_bytes
     if not data:
         raise ApiError("Empty file.")
-    return store.ingest(name, data)
+    return store.ingest(name, data, req.arg("batch", "") or None)
 
 
 @route("GET", r"/api/bootstrap")

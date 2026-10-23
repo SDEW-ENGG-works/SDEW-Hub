@@ -11,10 +11,11 @@ async function uploadFiles(fileList, poPage) {
     const sub = document.getElementById('dropzone-sub');
     const said = [];
     let newInvoices = [], readAgain = 0, drsRead = [];
+    const batch = Date.now().toString(36);   // one drop of files = one upload
     for (const [i, f] of files.entries()) {
         sub.textContent = `Reading ${f.name} (${i + 1} of ${files.length})…`;
         try {
-            const r = await api(`/api/dqms/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+            const r = await api(`/api/dqms/upload?name=${encodeURIComponent(f.name)}&batch=${batch}`, { method: 'POST', body: f });
             if (r.kind === 'invoices') {
                 newInvoices = newInvoices.concat(r.new);
                 readAgain += r.updated.length;
@@ -91,14 +92,18 @@ function renderUploads() {
     const u = appState.preview.uploads || {};
     const el = document.getElementById('report-strip');
     if (!el) return;
+    const list = (a) => a.length > 8 ? a.slice(0, 8).map(esc).join(', ') + ` +${a.length - 8} more` : a.map(esc).join(', ');
+    const li = u.last_invoices || {}, ld = u.last_drs || {};
     const inv = u.invoices
-        ? `<span class="status-badge active">Invoices</span> <b>${inr(u.invoices, 0)}</b> loaded · ${inr(u.invoices_pending, 0)} not in a file yet`
-          + ` · ${inr(u.invoices_with_size, 0)} with Unit Size` + (u.invoices_last ? ` · last loaded ${esc(when(u.invoices_last))}` : '')
+        ? `<span class="status-badge active">Invoices</span>`
+          + (li.items && li.items.length ? ` <b>${inr(li.items.length, 0)}</b> uploaded now (${esc(when(li.at))}): ${list(li.items)} ·` : '')
+          + ` ${inr(u.invoices, 0)} in total · ${inr(u.invoices_pending, 0)} not in a file yet · ${inr(u.invoices_with_size, 0)} with Unit Size`
         : `<span class="status-badge inactive">No invoices</span> Drop the invoice PDFs above.`;
     const dr = u.drs
-        ? `<span class="status-badge active">DRs</span> <b>${inr(u.drs, 0)}</b> loaded (${inr(u.dr_lines, 0)} part lines)`
+        ? `<span class="status-badge active">DRs</span>`
+          + (ld.items && ld.items.length ? ` <b>${inr(ld.items.length, 0)}</b> uploaded now (${esc(when(ld.at))}): ${list(ld.items)} ·` : '')
+          + ` ${inr(u.drs, 0)} in total`
           + (u.invoice_drs ? ` · ${inr(u.invoice_drs_loaded, 0)} of ${inr(u.invoice_drs, 0)} invoice DRs have their PDF` : '')
-          + (u.drs_last ? ` · last loaded ${esc(when(u.drs_last))}` : '')
         : `<span class="status-badge inactive">No DRs</span> Optional - drop DR PDFs to check bins and qty gaps.`;
     el.insertAdjacentHTML('beforeend', `<div class="upload-ind">${inv}</div><div class="upload-ind">${dr}</div>`);
 }
