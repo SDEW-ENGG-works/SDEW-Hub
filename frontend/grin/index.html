@@ -37,6 +37,10 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
                     Monthly report
                 </button>
+                <button class="nav-btn" id="nav-dcn-btn" onclick="switchView('dcn')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                    Debit notes
+                </button>
                 <button class="nav-btn" id="nav-mails-btn" onclick="switchView('mails')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                     Reminders
@@ -118,6 +122,23 @@
                 </div>
             </div>
             <div id="mr-body"></div>
+        </section>
+        <!-- ============ DEBIT / CREDIT NOTES ============ -->
+        <section class="view-section" id="dcn-view">
+            <div class="section-header">
+                <div>
+                    <h2>Debit &amp; credit notes from TAFE</h2>
+                    <p class="section-desc">Why TAFE paid less: rate difference, rejections, cash discount – per document, invoice and part. Fetch them on <a href="#" onclick="switchView('sources');return false">Get data</a> (step 4).</p>
+                </div>
+                <div class="header-actions">
+                    <div class="toolbar"><label>From</label><input type="date" id="dcn-f" onchange="loadDcn()"><label>To</label><input type="date" id="dcn-t" onchange="loadDcn()"></div>
+                    <button class="btn btn-primary" onclick="dcnDownload()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Excel
+                    </button>
+                </div>
+            </div>
+            <div id="dcn-body"></div>
         </section>
         <!-- ============ REMINDERS ============ -->
         <section class="view-section" id="mails-view">
@@ -220,6 +241,23 @@
                         <tbody id="pay-files"></tbody>
                     </table>
                 </div>
+            </div>
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title"><span class="step-no">4</span>Debit / credit notes from TAFE Channel</div>
+                    <span class="status-badge" id="dcn-badge">—</span>
+                </div>
+                <dl class="kv" id="dcn-kv"></dl>
+                <div class="form-grid-4 align-end">
+                    <div class="form-group"><label>From date</label><input type="date" id="dcn-from"></div>
+                    <div class="form-group"><label>To date</label><input type="date" id="dcn-to"></div>
+                    <div class="form-group"></div>
+                    <div class="form-group"><button class="btn btn-primary" id="btn-dcn" onclick="dcnFetch()">Fetch debit / credit notes</button></div>
+                </div>
+                <p class="hint">Account Info › Debit Credit Note / Intimation Details, View All – every document and what is inside it:
+                    <b>rate difference</b> (TAFE paid the PO rate, we billed more), <b>rejections</b> scrapped on our account (tax invoice ZK),
+                    <b>cash discount</b> (KG) and credit notes. The first fetch reads every note once (a few minutes for a year); later fetches only read new ones.</p>
+                <pre class="log-box" id="dcn-log" style="display:none"></pre>
             </div>
         </section>
 
@@ -340,6 +378,7 @@ MAIL_FROM=accounts@yourdomain.com</code>
     <script src="js/core/utils.js?v=884e321599"></script>
     <script src="js/pages/status.js?v=5a3689c874"></script>
     <script src="js/pages/monthly.js?v=bae81b5016"></script>
+    <script src="js/pages/dcn.js"></script>
     <script src="js/pages/mails.js?v=6ff0368ee7"></script>
     <script src="js/pages/sources.js?v=063fbf2f7b"></script>
     <script src="js/pages/buyers.js?v=beff655b80"></script>

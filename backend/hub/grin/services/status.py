@@ -199,6 +199,11 @@ def _build(as_of):
                   "WHERE m.status='Sent' ORDER BY m.sent_at"):
         sent[m["inv_key"]].append(m["sent_at"])
     notes = {n["inv_key"]: n for n in rows("SELECT * FROM gp_notes")}
+    try:                                   # TAFE debit / credit notes per invoice (rate difference, rejection)
+        from .notes import by_invoice
+        dcn = by_invoice()
+    except Exception:  # noqa: BLE001
+        dcn = {}
     blist = buyers()
 
     check = dict(agree=0, differ=0, not_marked=0, marked_not_paid=0, examples=[])
@@ -295,6 +300,14 @@ def _build(as_of):
                 status = WAIT
                 if grin_until and idate and idate > grin_until:
                     msgs.append(f"GRIN data only up to {grin_until:%d-%b} - fetch GRIN")
+        dc = dcn.get(k) or []
+        rate = round(sum(x["net"] for x in dc if x["kind"] == "Rate difference"), 2)
+        rej = round(sum(x["net"] for x in dc if x["kind"] == "Rejection"), 2)
+        if rate:
+            msgs.append(f"TAFE debited rate difference Rs {rate:,.2f} (billed above PO rate)")
+        if rej:
+            msgs.append(f"TAFE rejection debit Rs {rej:,.2f} (parts scrapped on our account)")
+        row.update(dc_rate=rate, dc_rej=rej)
         n = notes.get(k) or {}
         b = find_buyer(blist, p["code"], order_no)
         row.update(status=status, notes=msgs, note=n.get("note") or "", hold=bool(n.get("hold")),

@@ -123,6 +123,17 @@ CREATE TABLE IF NOT EXISTS gp_mails(
 CREATE TABLE IF NOT EXISTS gp_mail_invoices(
     mail_id INTEGER, inv_key TEXT, sent_at TEXT, PRIMARY KEY(mail_id, inv_key));
 CREATE INDEX IF NOT EXISTS ix_gp_mail_inv ON gp_mail_invoices(inv_key);
+CREATE TABLE IF NOT EXISTS gp_dc_docs(
+    doc_no TEXT, doc_type TEXT, doc_date TEXT, grin_date TEXT, label TEXT, debit REAL, credit REAL, plant TEXT,
+    reason TEXT, rid TEXT, detail_status TEXT, error TEXT, note_total REAL, note_reason TEXT, note_text TEXT,
+    lines INTEGER, listed_at TEXT, read_at TEXT, PRIMARY KEY(doc_no, doc_type));
+CREATE INDEX IF NOT EXISTS ix_gp_dc_date ON gp_dc_docs(doc_date);
+CREATE TABLE IF NOT EXISTS gp_dc_lines(
+    doc_no TEXT, doc_type TEXT, seq INTEGER, inv_key TEXT, kind TEXT, plant TEXT, inv_raw TEXT, inv_date TEXT,
+    grn_no TEXT, grn_date TEXT, part TEXT, part_desc TEXT, qty REAL, po_no TEXT, bill_rate REAL, po_rate REAL,
+    diff_rate REAL, basic REAL, gst REAL, net REAL, days INTEGER, ref_no TEXT, rej_doc TEXT, reason TEXT,
+    PRIMARY KEY(doc_no, doc_type, seq));
+CREATE INDEX IF NOT EXISTS ix_gp_dc_inv ON gp_dc_lines(inv_key);
 CREATE TABLE IF NOT EXISTS gp_notes(
     inv_key TEXT PRIMARY KEY, note TEXT, hold INTEGER DEFAULT 0, updated_at TEXT);
 

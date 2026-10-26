@@ -21,6 +21,7 @@ function switchView(name) {
     document.getElementById(`nav-${name}-btn`).classList.add('active');
     if (name === 'status') loadStatus();
     else if (name === 'monthly') loadMonthly();
+    else if (name === 'dcn') loadDcn();
     else if (name === 'mails') loadMails();
     else if (name === 'sources') loadSources();
     else if (name === 'buyers') loadBuyers();
