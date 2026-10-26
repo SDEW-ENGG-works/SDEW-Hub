@@ -59,10 +59,15 @@ def reconcile(run_rows, report_rows):
             by_base[(cust, inv)][sku] += q
         docs[(cust, _base(inv))].add(str(r.get("DOCUMENT_NO") or "").strip())
 
+    # our own file can hold the same invoice twice: "14364/26-27" and "14364" (the packing list
+    # had a second line typed without the year). Then the report's "14364" rows are that line's,
+    # not extra quantity of "14364/26-27".
+    plain = {k for k in expected if "/" not in k[1]}
     out, totals = [], Counter()
     for (cust, inv), want in expected.items():
         got = Counter(by_exact.get((cust, inv), Counter()))
-        got.update(by_base.get((cust, _base(inv)), Counter()))
+        if "/" not in inv or (cust, _base(inv)) not in plain:
+            got.update(by_base.get((cust, _base(inv)), Counter()))
         if not got:
             status = "missing"
         elif all(got[s] == q for s, q in want.items()) and set(got) <= set(want):
