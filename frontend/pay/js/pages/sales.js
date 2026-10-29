@@ -49,7 +49,9 @@ function renderSales() {
         <span class="chip"><b>${inr(g.n, 0)}</b> lines</span>` : '';
 
     const set = (id, v) => { document.getElementById(id).textContent = v; };
+    showLink('sales', 'src-sales-link', f);
     document.getElementById('btn-sales-marked').disabled = !run;
+    document.getElementById('btn-sales-save-file').disabled = !run;
     document.getElementById('btn-sales-report').disabled = !run;
     if (!run) {
         ['ss-mark', 'ss-agree', 'ss-look', 'ss-pending'].forEach(id => set(id, '—'));
@@ -241,6 +243,29 @@ async function downloadSalesMarked() {
         showToast(`${inr(run.summary.to_mark, 0)} lines written in <b>${esc(name)}</b>. That file is now the sales file — the next check starts from it.`, 'success', 7000);
         await refreshSales();
         renderSales();
+    }
+}
+
+// Save: GRN NO / DATE / QTY written straight into the sales file it was uploaded from (no download)
+async function saveSalesToFile() {
+    const run = salesState.run;
+    if (!run) return;
+    const rec = await fsFile.info('sales');
+    if (!rec) return showToast('This sales file is not linked to a file on this computer. Drop it again (or click the drop box and choose it), check, then Save.', 'danger', 8000);
+    const btn = document.getElementById('btn-sales-save-file');
+    setBusy(btn, true, 'Saving…');
+    try {
+        await fsFile.allow('sales', run.sales_file);
+        const marked = await fetchBlob('/api/pay/sales/export/marked');
+        const name = await fsFile.save('sales', marked, run.sales_file);
+        await refreshSales();
+        if (salesState.file) await fsFile.setFileId('sales', salesState.file.id);
+        renderSales();
+        showToast(`${inr(run.summary.to_mark, 0)} lines written and saved into <b>${esc(name)}</b>. The earlier version is kept on the Uploads page.`, 'success', 8000);
+    } catch (e) {
+        showToast(esc(e.message), 'danger', 9000);
+    } finally {
+        setBusy(btn, false);
     }
 }
 

@@ -3,7 +3,7 @@ import urllib.parse
 
 from ..db import get_setting, one, rows
 from .. import route
-from ...http import ApiError
+from ...http import ApiError, Response
 from ..services.engine import cleared_at, latest_run_id, run_summary
 from ..services.defaults import load_settings
 from ..services.ingest import ingest
@@ -50,3 +50,21 @@ def bootstrap(req):
     rid = latest_run_id()
     return dict(register=reg, payments=pay, vouchers=vouchers, run=run_summary(rid) if rid else None,
                 settings=load_settings())
+
+
+@route("GET", r"/api/files/(?P<fid>\d+)/download")
+def download_file(req):
+    """Any uploaded file back as it was uploaded - the earlier versions of the register / sales file."""
+    import os as _os
+    import urllib.parse as _up
+    from ..services.ingest import file_path
+    f = one("SELECT name FROM pm_files WHERE id=?", (int(req.params["fid"]),))
+    path = file_path(int(req.params["fid"])) if f else None
+    if not path or not _os.path.exists(path):
+        raise ApiError("This file is no longer stored.", 404)
+    with open(path, "rb") as fh:
+        data = fh.read()
+    ctype = "application/vnd.ms-excel" if f["name"].lower().endswith(".xls") else \
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(data, 200, ctype, {"Content-Disposition": f"attachment; filename=\"{f['name']}\"; "
+                                       f"filename*=UTF-8''{_up.quote(f['name'])}"})
