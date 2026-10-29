@@ -135,9 +135,10 @@ def run_check():
     cur = con.execute("INSERT INTO pm_runs(created_at, register_file, summary) VALUES(?,?,?)",
                       (datetime.now().isoformat(timespec="seconds"), fid, json.dumps(summary)))
     rid = cur.lastrowid
-    con.executemany(
-        "INSERT INTO pm_run_lines(run_id,seq,cat,action,inv,inv_key,reg_row,reg_date,reg_amount,reg_party,reg_mark,"
-        "reg_mark_date,pv,pv_date,credit,debit,doc_types,note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    from ...grin.services.ingest import _write_many      # many rows per INSERT: small requests to Turso
+    _write_many(
+        con, "INSERT INTO pm_run_lines(run_id,seq,cat,action,inv,inv_key,reg_row,reg_date,reg_amount,reg_party,reg_mark,"
+        "reg_mark_date,pv,pv_date,credit,debit,doc_types,note)",
         [(rid, i, o["cat"], o["action"], o["inv"], o["inv_key"], o["reg_row"], o["reg_date"], o["reg_amount"],
           o["reg_party"], o["reg_mark"], o["reg_mark_date"], o["pv"], o["pv_date"], o["credit"], o["debit"],
           o["doc_types"], o["note"]) for i, o in enumerate(out)])

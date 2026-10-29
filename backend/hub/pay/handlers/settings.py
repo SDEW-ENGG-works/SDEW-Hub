@@ -42,7 +42,7 @@ def put_settings(req):
 def reset_data(req):
     what = req.json.get("what")
     tables = {"payments": ["pm_pay_lines", "pm_vouchers"], "runs": ["pm_run_lines", "pm_runs"],
-              "sales": ["ps_lines", "ps_runs"]}.get(what)
+              "sales": ["ps_lines", "ps_actions", "ps_runs"]}.get(what)
     if not tables:
         raise ApiError("Nothing to clear")
     con = get_db()

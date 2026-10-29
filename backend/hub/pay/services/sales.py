@@ -297,25 +297,77 @@ def run_sales():
     first_sales = min((r["date"] for r in sales["rows"] if r["date"]), default="")
     unmatched = [g for g in unmatched if first_sales <= (g["grin_date"] or "")]
     summary = _summary(out, has_qty, upto, unmatched, last_sales)
+    # all lines of the check go into ONE compressed field of ps_runs (~0.3 MB instead of ~12 MB of rows),
+    # so the check is quick also when the database is Turso and the office internet is slow
     con = get_db()
-    cur = con.execute("INSERT INTO ps_runs(created_at, sales_file, summary) VALUES(?,?,?)",
-                      (datetime.now().isoformat(timespec="seconds"), fid, json.dumps(summary)))
+    cur = con.execute("INSERT INTO ps_runs(created_at, sales_file, summary, lines) VALUES(?,?,?,?)",
+                      (datetime.now().isoformat(timespec="seconds"), fid, json.dumps(summary), _pack_lines(out)))
     rid = cur.lastrowid
-    cols = ["cat", "action", "row", "inv", "inv_key", "inv_date", "party", "part", "qty", "sheet_gno", "sheet_gdate",
-            "sheet_gqty", "grin_no", "grin_date", "grin_qty", "acc_qty", "rej_qty", "grin_part", "note"]
-    # many rows per INSERT and a commit every few thousand rows: one Turso round trip stays small
-    ph = "(?,?" + ",?" * len(cols) + ")"
-    step = 40
-    for k in range(0, len(out), step):
-        chunk = out[k:k + step]
-        con.execute(f"INSERT INTO ps_lines(run_id, seq, {', '.join(cols)}) VALUES " + ",".join([ph] * len(chunk)),
-                    [v for i, o in enumerate(chunk, start=k) for v in (rid, i, *[o[c] for c in cols])])
-        if (k // step) % 25 == 24:
-            con.commit()
-    con.execute("DELETE FROM ps_lines WHERE run_id <= ?", (rid - 10,))
+    con.execute("DELETE FROM ps_actions WHERE run_id <= ?", (rid - 10,))
+    con.execute("DELETE FROM ps_lines")        # rows of checks made before 29-Oct-2026 (no longer used)
     con.execute("DELETE FROM ps_runs WHERE id <= ?", (rid - 10,))
     con.commit()
     return sales_summary(rid)
+
+
+LINE_COLS = ["cat", "action", "row", "inv", "inv_key", "inv_date", "party", "part", "qty", "sheet_gno", "sheet_gdate",
+             "sheet_gqty", "grin_no", "grin_date", "grin_qty", "acc_qty", "rej_qty", "grin_part", "note"]
+_cache = {}
+
+
+def _pack_lines(out):
+    import zlib
+    return zlib.compress(json.dumps([[o[c] for c in LINE_COLS] for o in out], separators=(",", ":")).encode(), 6)
+
+
+def base_lines(rid):
+    """The lines of a check as stored (default tick per line). Kept in memory per check."""
+    import zlib
+    if rid not in _cache:
+        r = one("SELECT lines FROM ps_runs WHERE id=?", (rid,))
+        if not r or not r["lines"]:
+            raise ApiError("This check was made by an older version - press Check GRN again.")
+        data = json.loads(zlib.decompress(bytes(r["lines"])).decode())
+        _cache.clear()
+        _cache[rid] = [dict(zip(LINE_COLS, v), seq=i) for i, v in enumerate(data)]
+    return _cache[rid]
+
+
+def run_lines(rid):
+    """Lines with the ticks the user changed: one line (seq) beats its whole group (cat), which beats the default."""
+    seq_act, cat_act = {}, {}
+    for a in rows("SELECT seq, cat, action FROM ps_actions WHERE run_id=?", (rid,)):
+        if a["seq"] is not None and a["seq"] >= 0:
+            seq_act[a["seq"]] = a["action"]
+        else:
+            cat_act[a["cat"]] = a["action"]
+    out = []
+    for l in base_lines(rid):
+        act = l["action"]
+        if l["grin_no"] and l["cat"] not in LOCKED and l["cat"] in cat_act:
+            act = cat_act[l["cat"]]
+        if l["seq"] in seq_act:
+            act = seq_act[l["seq"]]
+        out.append(dict(l, action=act) if act != l["action"] else l)
+    return out
+
+
+def set_line_action(rid, seq, action):
+    con = get_db()
+    con.execute("DELETE FROM ps_actions WHERE run_id=? AND seq=?", (rid, seq))
+    con.execute("INSERT INTO ps_actions(run_id, seq, cat, action) VALUES(?,?,?,?)", (rid, seq, "", action))
+    con.commit()
+
+
+def set_cat_action(rid, cat, action):
+    seqs = [l["seq"] for l in base_lines(rid) if l["cat"] == cat]
+    con = get_db()
+    for i in range(0, len(seqs), 300):
+        part = seqs[i:i + 300]
+        con.execute(f"DELETE FROM ps_actions WHERE run_id=? AND seq IN ({','.join('?' * len(part))})", [rid] + part)
+    con.execute("DELETE FROM ps_actions WHERE run_id=? AND seq=-1 AND cat=?", (rid, cat))
+    con.execute("INSERT INTO ps_actions(run_id, seq, cat, action) VALUES(?,?,?,?)", (rid, -1, cat, action))
+    con.commit()
 
 
 def _summary(out, has_qty, upto, unmatched, last_sales):
@@ -340,13 +392,20 @@ def latest_sales_run():
 
 
 def sales_summary(rid):
-    run = one("SELECT * FROM ps_runs WHERE id=?", (rid,))
+    run = one("SELECT id, created_at, sales_file, summary, exported_at, exported_file FROM ps_runs WHERE id=?", (rid,))
     if not run:
         return None
     run["summary"] = json.loads(run["summary"])
-    for r in rows("SELECT cat, SUM(action='mark') n FROM ps_lines WHERE run_id=? GROUP BY cat", (rid,)):
-        run["summary"]["cats"][r["cat"]]["marking"] = r["n"]
-    run["summary"]["to_mark"] = one("SELECT COUNT(*) n FROM ps_lines WHERE run_id=? AND action='mark'", (rid,))["n"]
+    try:
+        lines = run_lines(rid)
+    except ApiError:
+        return None
+    for c in run["summary"]["cats"].values():
+        c["marking"] = 0
+    for l in lines:
+        if l["action"] == "mark":
+            run["summary"]["cats"][l["cat"]]["marking"] += 1
+    run["summary"]["to_mark"] = sum(c["marking"] for c in run["summary"]["cats"].values())
     f = one("SELECT name FROM pm_files WHERE id=?", (run["sales_file"],))
     run["sales_name"] = f["name"] if f else ""
     return run
@@ -376,7 +435,7 @@ def marked_sales(rid):
     wb = openpyxl.load_workbook(path)
     ws = wb[sheet]
     n = 0
-    for l in rows("SELECT * FROM ps_lines WHERE run_id=? AND action='mark' AND grin_no<>''", (rid,)):
+    for l in [x for x in run_lines(rid) if x["action"] == "mark" and x["grin_no"]]:
         r = l["row"]
         ws.cell(r, cols["gno"] + 1).value = int(l["grin_no"]) if l["grin_no"].isdigit() else l["grin_no"]
         if "gdate" in cols:
@@ -418,7 +477,7 @@ def sales_report(rid):
            [30, 12, 12], start=4)
     ws.freeze_panes = None
     ws2 = wb.create_sheet("Lines")
-    data = rows("SELECT * FROM ps_lines WHERE run_id=? ORDER BY seq", (rid,))
+    data = run_lines(rid)
     _table(ws2, ["Result", "Written", "Row", "Invoice No", "Invoice date", "Party", "Part No", "Qty", "File GRN NO",
                  "File GRN DATE", "File GRN QTY", "TAFE GRIN no", "GRIN date", "GRIN qty", "Accepted", "Rejected",
                  "GRIN part", "Note"],

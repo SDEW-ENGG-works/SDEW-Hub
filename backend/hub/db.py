@@ -159,7 +159,10 @@ CREATE TABLE IF NOT EXISTS pm_run_lines(
 CREATE INDEX IF NOT EXISTS ix_pm_run_lines ON pm_run_lines(run_id, cat);
 CREATE TABLE IF NOT EXISTS ps_runs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, sales_file INTEGER, summary TEXT,
-    exported_at TEXT, exported_file INTEGER);
+    exported_at TEXT, exported_file INTEGER, lines BLOB);
+-- ticks the user changed on a sales check: seq = one line, seq -1 = the whole group (cat)
+CREATE TABLE IF NOT EXISTS ps_actions(run_id INTEGER, seq INTEGER, cat TEXT, action TEXT);
+CREATE INDEX IF NOT EXISTS ix_ps_actions ON ps_actions(run_id);
 CREATE TABLE IF NOT EXISTS ps_lines(
     run_id INTEGER, seq INTEGER, cat TEXT, action TEXT, row INTEGER, inv TEXT, inv_key TEXT, inv_date TEXT,
     party TEXT, part TEXT, qty REAL, sheet_gno TEXT, sheet_gdate TEXT, sheet_gqty REAL,
@@ -192,6 +195,7 @@ MIGRATIONS = [
     ("batches", "data", "BLOB"),
     ("chep_runs", "leap_status", "TEXT"), ("chep_runs", "leap_result", "TEXT"), ("chep_runs", "leap_at", "TEXT"),
     ("invoices", "eway", "TEXT"), ("invoices", "unit_size", "REAL"),
+    ("ps_runs", "lines", "BLOB"),
 ]
 
 

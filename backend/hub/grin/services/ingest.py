@@ -11,7 +11,7 @@ from datetime import datetime
 
 from ... import config
 from ...http import ApiError
-from ..db import get_db, log
+from ..db import get_db, log, rows
 from . import payments, status, tally
 from .defaults import plants
 
@@ -66,51 +66,94 @@ def _ingest(name, data, stored, path):
     return r
 
 
+def _write_many(con, sql_head, rows_, per=40):
+    """Many rows per INSERT and a commit every ~1,000 rows: small, few requests when the database is Turso."""
+    if not rows_:
+        return
+    ph = "(" + ",".join("?" * len(rows_[0])) + ")"
+    for k in range(0, len(rows_), per):
+        chunk = rows_[k:k + per]
+        con.execute(sql_head + " VALUES " + ",".join([ph] * len(chunk)), [v for r in chunk for v in r])
+        if (k // per) % 25 == 24:
+            con.commit()
+
+
 def store_payments(name, stored, path):
+    """Only lines not in the database yet (or changed) are written - a payment export loaded again costs nothing."""
     p = payments.read_payments(path)
     con = get_db()
     now = _now()
-    before = con.execute("SELECT COUNT(*) FROM gp_pay_lines").fetchone()[0]
-    for ln in p["lines"]:
-        con.execute("INSERT OR REPLACE INTO gp_pay_lines(pv, pv_date, ref_doc, doc_type, inv_raw, inv_key, inv_date, "
-                    "debit, credit, file, loaded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                    (ln["pv"], ln["pv_date"], ln["ref_doc"], ln["doc_type"], ln["inv_raw"], ln["inv_key"], ln["inv_date"],
-                     ln["debit"], ln["credit"], name, now))
+    pvs = sorted({ln["pv"] for ln in p["lines"]})
+    have = {}
+    if pvs:
+        for r in rows(f"SELECT pv, ref_doc, inv_key, pv_date, debit, credit FROM gp_pay_lines WHERE pv IN "
+                      f"({','.join('?' * len(pvs))})", pvs):
+            have[(r["pv"], r["ref_doc"], r["inv_key"])] = (r["pv_date"], r["debit"], r["credit"])
+    new = [ln for ln in p["lines"]
+           if have.get((ln["pv"], ln["ref_doc"], ln["inv_key"])) != (ln["pv_date"], ln["debit"], ln["credit"])]
+    added = sum(1 for ln in new if (ln["pv"], ln["ref_doc"], ln["inv_key"]) not in have)
+    _write_many(con, "INSERT OR REPLACE INTO gp_pay_lines(pv, pv_date, ref_doc, doc_type, inv_raw, inv_key, inv_date, "
+                     "debit, credit, file, loaded_at)",
+                [(ln["pv"], ln["pv_date"], ln["ref_doc"], ln["doc_type"], ln["inv_raw"], ln["inv_key"], ln["inv_date"],
+                  ln["debit"], ln["credit"], name, now) for ln in new])
     con.execute("INSERT INTO gp_pay_files(kind, name, stored, period_from, period_to, rows, loaded_at) "
                 "VALUES('Payments',?,?,?,?,?,?)", (name, stored, p["period_from"], p["period_to"], len(p["lines"]), now))
     con.commit()
-    added = con.execute("SELECT COUNT(*) FROM gp_pay_lines").fetchone()[0] - before
     log("grin", "Payment export", f"{name}: {len(p['vouchers'])} vouchers, {len(p['lines'])} lines")
     return dict(kind="Payments", message=f"TAFE payments {p['period_from']} to {p['period_to']}: "
                 f"{len(p['vouchers'])} vouchers, {len(p['lines'])} lines ({added} new)", rows=len(p["lines"]))
 
 
+REG_COLS = ("inv_no", "inv_date", "amount", "party", "pv", "pv_date", "cancelled")
+
+
 def store_register(name, stored, path):
+    """The register is the whole year (13,000+ invoices). Only invoices that are new or changed (e.g. newly
+    marked paid) are written; the rest of gp_register is left as it is - a few KB instead of ~8 MB to Turso."""
     reg = payments.read_register(path)
     con = get_db()
     now = _now()
-    con.execute("DELETE FROM gp_register")
-    seen = set()
-    for k, r in enumerate(reg["rows"]):
-        if k and k % 2000 == 0:
-            con.commit()          # Turso: send the rows in parts, not one huge request
-        if r["inv_key"] in seen:      # the same invoice twice: keep the marked / first row
-            if r["pv"]:
-                con.execute("UPDATE gp_register SET pv=?, pv_date=? WHERE inv_key=? AND (pv IS NULL OR pv='')",
-                            (r["pv"], r["pv_date"], r["inv_key"]))
+    want = {}
+    for r in reg["rows"]:
+        k = r["inv_key"]
+        if k in want:                 # the same invoice twice: keep the first row, with the mark of any copy
+            if r["pv"] and not want[k]["pv"]:
+                want[k] = dict(want[k], pv=r["pv"], pv_date=r["pv_date"])
             continue
-        seen.add(r["inv_key"])
-        con.execute("INSERT INTO gp_register(inv_key, inv_no, inv_date, amount, party, pv, pv_date, cancelled, file, "
-                    "loaded_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    (r["inv_key"], r["inv_no"], r["inv_date"], r["amount"], r["party"], r["pv"], r["pv_date"],
-                     r["cancelled"], name, now))
+        want[k] = r
+    have = {x["inv_key"]: x for x in rows("SELECT inv_key, " + ", ".join(REG_COLS) + " FROM gp_register")}
+
+    def same(a, b):
+        for c in REG_COLS:
+            x, y = a.get(c), b.get(c)
+            if c == "amount":
+                if round(float(x or 0), 2) != round(float(y or 0), 2):
+                    return False
+            elif c == "cancelled":
+                if int(x or 0) != int(y or 0):
+                    return False
+            elif (x or "") != (y or ""):
+                return False
+        return True
+
+    changed = [r for k, r in want.items() if k not in have or not same(r, have[k])]
+    gone = [k for k in have if k not in want]
+    for i in range(0, len(gone), 200):
+        part = gone[i:i + 200]
+        con.execute(f"DELETE FROM gp_register WHERE inv_key IN ({','.join('?' * len(part))})", part)
+    _write_many(con, "INSERT OR REPLACE INTO gp_register(inv_key, inv_no, inv_date, amount, party, pv, pv_date, "
+                     "cancelled, file, loaded_at)",
+                [(r["inv_key"], r["inv_no"], r["inv_date"], r["amount"], r["party"], r["pv"], r["pv_date"],
+                  r["cancelled"], name, now) for r in changed])
+    con.execute("UPDATE gp_register SET file=?, loaded_at=?", (name, now))
     con.execute("INSERT INTO gp_pay_files(kind, name, stored, period_from, period_to, rows, loaded_at) "
                 "VALUES('Register',?,?,?,?,?,?)",
                 (name, stored, min((r["inv_date"] for r in reg["rows"] if r["inv_date"]), default=""),
                  max((r["inv_date"] for r in reg["rows"] if r["inv_date"]), default=""), len(reg["rows"]), now))
     con.commit()
     marked = sum(1 for r in reg["rows"] if r["pv"])
-    log("grin", "Invoice register", f"{name}: {len(reg['rows'])} invoices, {marked} marked paid")
+    log("grin", "Invoice register", f"{name}: {len(reg['rows'])} invoices, {marked} marked paid "
+        f"({len(changed)} new/changed, {len(gone)} removed)")
     return dict(kind="Register", message=f"Invoice register ({reg['sheet']}): {len(reg['rows'])} invoices, "
                 f"{marked} marked paid", rows=len(reg["rows"]))
 

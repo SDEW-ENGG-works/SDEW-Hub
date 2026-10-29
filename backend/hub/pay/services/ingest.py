@@ -2,10 +2,12 @@
 import json
 import os
 import re
+import time
+import zlib
 from datetime import datetime
 
 from ... import config
-from ..db import get_db, one, set_setting
+from ..db import get_db, one, rows, set_setting
 from ...http import ApiError
 from ...grin.services import payments
 from . import register
@@ -23,7 +25,7 @@ def _store(name, data):
 def _add_file(kind, name, path, n, info):
     """The file's bytes are kept in the database too: on Vercel the disk is wiped after every request."""
     with open(path, "rb") as fh:
-        data = fh.read()
+        data = pack(fh.read())
     con = get_db()
     cur = con.execute("INSERT INTO pm_files(kind,name,stored,uploaded_at,rows,info,data) VALUES(?,?,?,?,?,?,?)",
                       (kind, name, os.path.basename(path), datetime.now().isoformat(timespec="seconds"), n,
@@ -31,6 +33,20 @@ def _add_file(kind, name, path, n, info):
     fid = cur.lastrowid
     con.commit()
     return fid
+
+
+MARK = b"ZL1:"
+
+
+def pack(data):
+    """zlib-compressed copy for the database (.xls shrinks ~5x; .xlsx is already zipped and stays as it is)."""
+    z = zlib.compress(data, 6)
+    return MARK + z if len(z) < len(data) * 0.9 else data
+
+
+def unpack(data):
+    data = bytes(data or b"")
+    return zlib.decompress(data[len(MARK):]) if data.startswith(MARK) else data
 
 
 def file_path(file_id):
@@ -44,7 +60,7 @@ def file_path(file_id):
         if not d or not d["data"]:
             return None
         with open(path, "wb") as fh:
-            fh.write(d["data"])
+            fh.write(unpack(d["data"]))
     return path
 
 
@@ -52,6 +68,13 @@ def ingest(name, data):
     if not (data[:2] == b"PK" or data[:4] == b"\xd0\xcf\x11\xe0"):
         raise ApiError("Not an Excel file (.xls / .xlsx)")
     path = _store(name, data)
+    t0 = time.time()
+    res = _ingest(name, path)
+    print(f"[pay] {name}: {res.get('kind')} read and saved in {time.time() - t0:.1f}s")
+    return res
+
+
+def _ingest(name, path):
     try:
         if payments.is_payment_export(path):
             r = _load_payments(name, path)
@@ -101,19 +124,29 @@ def _load_payments(name, path):
     info = dict(vendor=p["vendor"], period_from=p["period_from"], period_to=p["period_to"],
                 vouchers=[v["pv"] for v in p["vouchers"]])
     fid = _add_file("Payments", name, path, len(p["lines"]), info)
-    before = one("SELECT COUNT(*) n FROM pm_pay_lines")["n"]
     for v in p["vouchers"]:
         con.execute("INSERT INTO pm_vouchers(pv,pv_date,amount,vendor,file_id) VALUES(?,?,?,?,?) "
                     "ON CONFLICT(pv) DO UPDATE SET pv_date=excluded.pv_date, amount=excluded.amount, "
                     "vendor=excluded.vendor, file_id=excluded.file_id",
                     (v["pv"], v["pv_date"], v["amount"], p["vendor"], fid))
+    # only lines not in the database yet: loading the same export again sends nothing
+    pvs = sorted({l["pv"] for l in p["lines"]})
+    have = set()
+    if pvs:
+        have = {(r["pv"], r["ref_doc"], r["doc_type"], r["inv_raw"]) for r in rows(
+            f"SELECT pv, ref_doc, doc_type, inv_raw FROM pm_pay_lines WHERE pv IN ({','.join('?' * len(pvs))})", pvs)}
+    new, seen = [], set()
     for l in p["lines"]:
-        con.execute("INSERT OR IGNORE INTO pm_pay_lines(pv,pv_date,ref_doc,doc_type,inv_raw,inv_key,inv_date,"
-                          "debit,credit,file_id,loaded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                          (l["pv"], l["pv_date"], l["ref_doc"], l["doc_type"], l["inv_raw"], l["inv_key"],
-                           l["inv_date"], l["debit"], l["credit"], fid, now))
+        k = (l["pv"], l["ref_doc"], l["doc_type"], l["inv_raw"])
+        if k not in have and k not in seen:
+            seen.add(k)
+            new.append((l["pv"], l["pv_date"], l["ref_doc"], l["doc_type"], l["inv_raw"], l["inv_key"],
+                        l["inv_date"], l["debit"], l["credit"], fid, now))
+    from ...grin.services.ingest import _write_many
+    _write_many(con, "INSERT OR IGNORE INTO pm_pay_lines(pv,pv_date,ref_doc,doc_type,inv_raw,inv_key,inv_date,"
+                     "debit,credit,file_id,loaded_at)", new)
     con.commit()
-    added = one("SELECT COUNT(*) n FROM pm_pay_lines")["n"] - before
+    added = len(new)
     info["added"] = added
     con.execute("UPDATE pm_files SET info=? WHERE id=?", (json.dumps(info), fid))
     con.commit()

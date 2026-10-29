@@ -11,18 +11,31 @@ async function uploadFiles(fileList, from = '') {
         row.className = 'upload-row';
         row.innerHTML = `<span class="status-badge muted">…</span><span class="file">${esc(f.name)}</span><span class="msg">Reading…</span>`;
         box.appendChild(row);
+        // show how long it has been reading, and give up with a clear message after 10 minutes
+        const t0 = Date.now();
+        const tick = setInterval(() => {
+            row.querySelector('.msg').textContent = `Reading… ${Math.round((Date.now() - t0) / 1000)} s`;
+        }, 1000);
+        const ctl = new AbortController();
+        const stop = setTimeout(() => ctl.abort(), 600000);
         try {
-            const r = await api(`/api/pay/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+            const r = await api(`/api/pay/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f, signal: ctl.signal });
+            clearInterval(tick);
             row.querySelector('.status-badge').className = 'status-badge active';
             row.querySelector('.status-badge').textContent = r.kind;
             row.querySelector('.msg').textContent = r.message;
             ok++;
             if ((r.kind || '').startsWith('Sales')) salesFile = true; else payFile = true;
         } catch (e) {
+            clearInterval(tick);
             row.classList.add('err');
             row.querySelector('.status-badge').className = 'status-badge inactive';
             row.querySelector('.status-badge').textContent = 'Error';
-            row.querySelector('.msg').textContent = e.message;
+            row.querySelector('.msg').textContent = e.name === 'AbortError'
+                ? 'No answer from the server after 10 minutes - check that it is running and try again'
+                : (e.message === 'Failed to fetch' ? 'Server not reachable - is the app running?' : e.message);
+        } finally {
+            clearTimeout(stop);
         }
     }
     document.querySelectorAll('input[type=file]').forEach(i => { i.value = ''; });

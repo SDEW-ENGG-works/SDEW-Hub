@@ -3,9 +3,10 @@ import json
 import urllib.parse
 
 from .. import route
-from ..db import get_db, get_setting, one, rows
+from ..db import get_setting, one
 from ...http import ApiError, Response
-from ..services.sales import CATS, LOCKED, latest_sales_run, marked_sales, run_sales, sales_report, sales_summary
+from ..services.sales import (CATS, LOCKED, latest_sales_run, marked_sales, run_lines, run_sales, sales_report,
+                              sales_summary, set_cat_action, set_line_action)
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -37,22 +38,18 @@ def check(req):
 @route("GET", r"/api/sales/lines")
 def lines(req):
     rid = _rid(req)
-    where, args = ["run_id=?"], [rid]
+    data = run_lines(rid)
     cat = req.arg("cat")
     if cat == "marking":
-        where.append("action='mark'")
+        data = [l for l in data if l["action"] == "mark"]
     elif cat:
-        where.append("cat=?")
-        args.append(cat)
-    q = req.arg("q").strip()
+        data = [l for l in data if l["cat"] == cat]
+    q = req.arg("q").strip().lower()
     if q:
-        where.append("(inv LIKE ? OR part LIKE ? OR grin_no LIKE ? OR sheet_gno LIKE ? OR party LIKE ? OR note LIKE ?)")
-        args += [f"%{q}%"] * 6
-    w = " AND ".join(where)
+        data = [l for l in data if any(q in str(l.get(k) or "").lower()
+                                       for k in ("inv", "part", "grin_no", "sheet_gno", "party", "note"))]
     limit, offset = int(req.arg("limit", "200")), int(req.arg("offset", "0"))
-    total = one(f"SELECT COUNT(*) n FROM ps_lines WHERE {w}", args)["n"]
-    data = rows(f"SELECT * FROM ps_lines WHERE {w} ORDER BY seq LIMIT ? OFFSET ?", args + [limit, offset])
-    return dict(total=total, lines=data, run=rid)
+    return dict(total=len(data), lines=data[offset:offset + limit], run=rid)
 
 
 @route("PUT", r"/api/sales/lines/(?P<seq>\d+)")
@@ -61,14 +58,14 @@ def set_action(req):
     action = req.json.get("action")
     if action not in ("mark", "skip"):
         raise ApiError("action must be mark or skip")
-    l = one("SELECT cat, grin_no FROM ps_lines WHERE run_id=? AND seq=?", (rid, int(req.params["seq"])))
-    if not l:
+    seq = int(req.params["seq"])
+    base = run_lines(rid)
+    if seq >= len(base):
         raise ApiError("Line not found", 404)
+    l = base[seq]
     if action == "mark" and (l["cat"] in LOCKED or not l["grin_no"]):
         raise ApiError("Nothing from TAFE GRIN to write on this line.")
-    con = get_db()
-    con.execute("UPDATE ps_lines SET action=? WHERE run_id=? AND seq=?", (action, rid, int(req.params["seq"])))
-    con.commit()
+    set_line_action(rid, seq, action)
     return sales_summary(rid)
 
 
@@ -80,9 +77,7 @@ def set_category(req):
         raise ApiError("Bad category or action")
     if action == "mark" and cat in LOCKED:
         raise ApiError(f"'{cat}' lines cannot be written.")
-    con = get_db()
-    con.execute("UPDATE ps_lines SET action=? WHERE run_id=? AND cat=? AND grin_no<>''", (action, rid, cat))
-    con.commit()
+    set_cat_action(rid, cat, action)
     return sales_summary(rid)
 
 
