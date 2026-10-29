@@ -30,14 +30,15 @@ def marked_register(rid):
     ws = wb[sheet]
     mc, dc = cols["mark"] + 1, cols.get("mark_date", cols["mark"] + 1) + 1
     last = max(mc, dc)
-    fill = PatternFill("solid", fgColor="FF" + s["fill_color"].lstrip("#").upper()[-6:])
+    fill = PatternFill("solid", fgColor="FF" + s["fill_color"].lstrip("#").upper()[-6:]) if s.get("fill_rows") else None
     n = 0
     for l in rows("SELECT * FROM pm_run_lines WHERE run_id=? AND action='mark' AND reg_row IS NOT NULL", (rid,)):
         r = l["reg_row"]
         ws.cell(r, mc).value = int(l["pv"]) if l["pv"].isdigit() else l["pv"]
         ws.cell(r, dc).value = dotted(l["pv_date"])
-        for c in range(1, last + 1):
-            ws.cell(r, c).fill = fill
+        if fill:      # off by default: the row is coloured by hand after checking
+            for c in range(1, last + 1):
+                ws.cell(r, c).fill = fill
         n += 1
     buf = io.BytesIO()
     wb.save(buf)

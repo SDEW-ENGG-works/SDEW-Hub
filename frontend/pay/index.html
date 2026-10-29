@@ -308,7 +308,9 @@
                     <div class="form-group"><label>Lowest (credit ÷ amount)</label><input type="number" step="0.001" id="set-min-ratio"></div>
                     <div class="form-group"><label>Highest (credit ÷ amount)</label><input type="number" step="0.001" id="set-max-ratio"></div>
                     <div class="form-group"><label>Row colour for marked rows</label>
+                        <label class="check"><input type="checkbox" id="set-fill-rows"> Colour the marked rows</label>
                         <div class="color-row"><input type="text" id="set-fill" maxlength="7" oninput="previewFill()"><span class="swatch" id="fill-swatch"></span></div>
+                        <p class="hint">Off: only the voucher no and date are written — you colour the row green after checking it.</p>
                     </div>
                     <div class="form-group"><label>Doc types to ignore</label><input type="text" id="set-ignore" placeholder="KG"><p class="hint">KG = cash discount</p></div>
                 </div>

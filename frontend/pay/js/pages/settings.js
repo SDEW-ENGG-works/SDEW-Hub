@@ -10,6 +10,7 @@ async function loadSettingsPage() {
         document.getElementById('set-min-ratio').value = s.min_ratio;
         document.getElementById('set-max-ratio').value = s.max_ratio;
         document.getElementById('set-fill').value = s.fill_color;
+        document.getElementById('set-fill-rows').checked = !!s.fill_rows;
         document.getElementById('set-ignore').value = (s.ignore_doc_types || []).join(', ');
         previewFill();
     } catch (e) {
@@ -30,6 +31,7 @@ async function saveSettings() {
             min_ratio: document.getElementById('set-min-ratio').value,
             max_ratio: document.getElementById('set-max-ratio').value,
             fill_color: document.getElementById('set-fill').value,
+            fill_rows: document.getElementById('set-fill-rows').checked,
             ignore_doc_types: document.getElementById('set-ignore').value,
         });
         appState.settings = d.settings;

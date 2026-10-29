@@ -13,7 +13,7 @@ def get_settings(req):
 def put_settings(req):
     body = req.json
     s = load_settings()
-    for k in ("mark_credit_debit", "mark_amount_differs"):
+    for k in ("mark_credit_debit", "mark_amount_differs", "fill_rows"):
         if k in body:
             s[k] = bool(body[k])
     for k in ("min_ratio", "max_ratio"):

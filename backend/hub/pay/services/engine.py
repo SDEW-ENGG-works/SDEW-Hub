@@ -3,7 +3,7 @@
 Rules (taken from how the register was marked by hand):
   * An invoice is received when the export has a CREDIT line for it (doc type RF/RG/RE/NM/NS).
     Mark = payment voucher number in 'payment details', voucher date (dd.mm.yyyy) in 'payment date',
-    columns A-F filled green.
+    columns A-F filled green only when Settings > "Colour the marked rows" is on (off by default).
   * Credit + debit note (ZK) on the same invoice: marked like any received invoice (Settings can change it).
   * Debit note only (ZK, no credit): NOT a payment - not marked.
   * Cash discount (KG) lines: no invoice - ignored.

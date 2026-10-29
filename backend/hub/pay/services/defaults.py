@@ -9,7 +9,10 @@ DEFAULT_SETTINGS = {
     "min_ratio": 0.985,
     "max_ratio": 1.002,
     "mark_amount_differs": True,
-    # cell colour put on columns A-F of a marked row (same green as the register)
+    # colour columns A-F of a marked row? Off: only the voucher no + date are written, and the row is
+    # coloured green by hand after checking it (user's choice, 29-Oct-2026)
+    "fill_rows": False,
+    # the colour used when fill_rows is on (same green as the register)
     "fill_color": "92D050",
     # doc types that are not invoice payments (cash discount etc.) - ignored when matching
     "ignore_doc_types": ["KG"],
