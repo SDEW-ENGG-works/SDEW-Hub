@@ -43,6 +43,7 @@ function renderSummary() {
     document.getElementById('btn-report').disabled = !run;
     if (!run) {
         ['st-mark', 'st-done', 'st-look', 'st-none'].forEach(id => set(id, '—'));
+        ['st-mark-sub', 'st-done-sub', 'st-look-sub', 'st-none-sub'].forEach(id => set(id, ''));
         document.getElementById('voucher-card').style.display = 'none';
         document.getElementById('mark-count-badge').textContent = '0';
         renderPills();
@@ -105,6 +106,7 @@ async function loadLines(offset = 0) {
     if (!appState.run) {
         tbody.innerHTML = `<tr><td colspan="14" class="muted-cell">Upload the two files, then press Check payments</td></tr>`;
         document.getElementById('lines-total-text').textContent = '';
+        document.getElementById('lines-pager').innerHTML = '';
         return;
     }
     const q = encodeURIComponent(document.getElementById('line-search').value.trim());
@@ -190,4 +192,27 @@ async function downloadMarked() {
 
 function downloadReport() {
     downloadFile('/api/pay/export/report', document.getElementById('btn-report'), 'Payment_Check.xlsx');
+}
+
+// Refresh: the page goes back to the empty state (no register, no payment export, no result).
+// Nothing is deleted - the next files you drop start a new check.
+async function refreshPage() {
+    const btn = document.getElementById('btn-refresh');
+    setBusy(btn, true, 'Clearing…');
+    try {
+        await apiJson('/api/pay/refresh', 'POST', {});
+        appState.cat = '';
+        appState.offset = 0;
+        document.getElementById('line-search').value = '';
+        document.getElementById('upload-results-check').innerHTML = '';
+        await refreshBootstrap();
+        renderSources();
+        renderSummary();
+        loadLines(0);
+        showToast('Cleared. Drop the register and the payment export to start again.', 'success');
+    } catch (e) {
+        showToast(e.message, 'danger');
+    } finally {
+        setBusy(btn, false);
+    }
 }

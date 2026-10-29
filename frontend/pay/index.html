@@ -15,8 +15,8 @@
     <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
     <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
     <link rel="stylesheet" href="css/30-pay.css?v=042331501c">
-    <link rel="stylesheet" href="/css/hub.css?v=0fd2314c29">
-    <script src="/js/hubbar.js?v=44b57d46c9"></script>
+    <link rel="stylesheet" href="/css/hub.css?v=c1b1bbf517">
+    <script src="/js/hubbar.js?v=46564c536e"></script>
 </head>
 
 <body>
@@ -60,6 +60,10 @@
                     <p class="section-desc">Drop the invoice register and the TAFE payment details export. Every invoice TAFE has paid gets its payment voucher number and date, like it was marked by hand.</p>
                 </div>
                 <div class="header-actions">
+                    <button class="btn btn-outline" id="btn-refresh" onclick="refreshPage()" title="Start again with an empty page (nothing is deleted)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                        Refresh
+                    </button>
                     <button class="btn btn-secondary" id="btn-report" onclick="downloadReport()" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Check report
@@ -344,10 +348,10 @@
     <div id="toast-container"></div>
 
     <script src="js/core/utils.js?v=f0aeaaa393"></script>
-    <script src="js/pages/check.js?v=0157470119"></script>
-    <script src="js/pages/uploads.js?v=c99499ad00"></script>
+    <script src="js/pages/check.js?v=e1d8b2c60c"></script>
+    <script src="js/pages/uploads.js?v=e191256f96"></script>
     <script src="js/pages/sales.js?v=4489f5051d"></script>
-    <script src="js/pages/settings.js?v=edda13122a"></script>
+    <script src="js/pages/settings.js?v=97cdec6544"></script>
     <script src="js/main.js?v=65eb60f54d"></script>
 </body>
 

@@ -27,8 +27,14 @@ CATS = ["To mark", "Credit + debit note", "Amount differs", "Already marked", "M
 MARK_CATS = {"To mark", "Credit + debit note", "Amount differs"}
 
 
+def cleared_at():
+    """Time of the last Refresh on the Payment marking page ('' = never). Payment lines loaded and checks made
+    before it are not shown or used any more (nothing is deleted - they are still in the database)."""
+    return get_setting("cleared_at", "") or ""
+
+
 def latest_run_id():
-    r = one("SELECT MAX(id) id FROM pm_runs")
+    r = one("SELECT MAX(id) id FROM pm_runs WHERE created_at >= ?", (cleared_at(),))
     return r["id"] if r else None
 
 
@@ -48,7 +54,7 @@ def run_check():
     path = file_path(fid) if fid else None
     if not path:
         raise ApiError("Upload the invoice register first.")
-    lines = rows("SELECT * FROM pm_pay_lines ORDER BY pv_date, pv, rowid")
+    lines = rows("SELECT * FROM pm_pay_lines WHERE loaded_at >= ? ORDER BY pv_date, pv, rowid", (cleared_at(),))
     if not lines:
         raise ApiError("Upload a TAFE payment details export first.")
     reg = read_register(path)

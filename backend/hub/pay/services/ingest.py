@@ -120,7 +120,7 @@ def save_register(name, path, kind="Register"):
 def _load_payments(name, path):
     p = payments.read_payments(path)
     con = get_db()
-    now = datetime.now().isoformat(timespec="seconds")
+    now = datetime.now().isoformat(timespec="microseconds")
     info = dict(vendor=p["vendor"], period_from=p["period_from"], period_to=p["period_to"],
                 vouchers=[v["pv"] for v in p["vouchers"]])
     fid = _add_file("Payments", name, path, len(p["lines"]), info)
@@ -145,6 +145,8 @@ def _load_payments(name, path):
     from ...grin.services.ingest import _write_many
     _write_many(con, "INSERT OR IGNORE INTO pm_pay_lines(pv,pv_date,ref_doc,doc_type,inv_raw,inv_key,inv_date,"
                      "debit,credit,file_id,loaded_at)", new)
+    if pvs:     # lines already in the database count as loaded now too (matters after Refresh)
+        con.execute(f"UPDATE pm_pay_lines SET loaded_at=? WHERE pv IN ({','.join('?' * len(pvs))})", [now] + pvs)
     con.commit()
     added = len(new)
     info["added"] = added
