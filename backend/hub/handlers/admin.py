@@ -106,3 +106,117 @@ def delete_user(req):
     auth.forget(u["username"])
     log("hub", "user deleted", f"{u['username']} (by {who['user']})")
     return dict(ok=True)
+
+
+# ------------------------------------------------------------------ safety: backups, cleared data, locked logins
+def _module_con(module):
+    if module == "chep":
+        from ..chep.db import get_db as g
+        return g()
+    if module == "dqms":
+        from ..dqms.db import get_db as g
+        return g()
+    return get_db()
+
+
+def _remote():
+    """The website cannot write files: backups / restores there are jobs for the SDEW PC."""
+    from .. import config
+    return config.ON_VERCEL
+
+
+@route("GET", r"/api/admin/safety")
+def safety_info(req):
+    _admin(req)
+    from ..services import backup, pc_jobs, safety
+    return dict(backups=backup.listing(), backup=backup.info(), remote=_remote(),
+                agent=pc_jobs.agent_info() if _remote() else None,
+                job=_job_status(), wipes=safety.snapshots(), locked=safety.locked_list())
+
+
+def _job_status():
+    from ..services import backup, pc_jobs
+    if not _remote():
+        return dict(backup.STATUS)
+    a, b = pc_jobs.latest("backup"), pc_jobs.latest("restore")
+    kind = "restore" if b and (not a or b["id"] > a["id"]) else "backup"
+    return pc_jobs.status(kind)
+
+
+@route("POST", r"/api/admin/backup")
+def backup_now(req):
+    who = _admin(req)
+    from ..services import backup, pc_jobs
+    if _remote():
+        try:
+            return pc_jobs.queue("backup", dict(reason="manual", user=who["user"]))
+        except RuntimeError as e:
+            raise ApiError(str(e))
+    if not backup.start("backup", dict(reason="manual"), user=who["user"]):
+        raise ApiError("A backup or restore is already running - wait for it to finish")
+    return dict(backup.STATUS)
+
+
+@route("POST", r"/api/admin/restore")
+def restore_backup(req):
+    who = _admin(req)
+    b = req.json
+    name = str(b.get("name") or "")
+    if str(b.get("confirm") or "").strip().upper() != "RESTORE":
+        raise ApiError('Type RESTORE to confirm')
+    if not one("SELECT id FROM backups WHERE name=?", (name,)):
+        raise ApiError("Backup not found")
+    from ..services import backup, pc_jobs
+    if _remote():
+        try:
+            return pc_jobs.queue("restore", dict(name=name, user=who["user"]))
+        except RuntimeError as e:
+            raise ApiError(str(e))
+    if not backup.start("restore", dict(name=name), user=who["user"]):
+        raise ApiError("A backup or restore is already running - wait for it to finish")
+    return dict(backup.STATUS)
+
+
+@route("GET", r"/api/admin/backup/status")
+def backup_status(req):
+    _admin(req)
+    return _job_status()
+
+
+@route("GET", r"/api/admin/backup/file")
+def backup_file(req):
+    _admin(req)
+    from ..http import Response
+    from ..services import backup
+    if _remote():
+        raise ApiError("Backup files are on the SDEW PC (data\\backups) - download them from the hub there")
+    p = backup._find(req.arg("name"))
+    if not p:
+        raise ApiError("File not found on this PC", 404)
+    with open(p, "rb") as fh:
+        data = fh.read()
+    import os as _os
+    return Response(data, content_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{_os.path.basename(p)}"'})
+
+
+@route("POST", r"/api/admin/wipes/(?P<id>\d+)/restore")
+def wipe_restore(req):
+    _admin(req)
+    from ..services import safety
+    try:
+        n = safety.restore_snapshot(int(req.params["id"]), _module_con)
+    except ValueError as e:
+        raise ApiError(str(e), 404)
+    return dict(ok=True, rows=n)
+
+
+@route("POST", r"/api/admin/unlock")
+def unlock_login(req):
+    _admin(req)
+    from ..services import safety
+    name = str(req.json.get("username") or "")
+    if not name:
+        raise ApiError("Which login?")
+    safety.unlock(name)
+    return dict(ok=True)

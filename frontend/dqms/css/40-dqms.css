@@ -52,3 +52,7 @@
 .nosize-text { color: #b45309; font-weight: 700; }
 
 .upload-ind { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+
+.eway-dates { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.3rem; font-size: 0.72rem; color: var(--muted); }
+.eway-dates label { display: flex; flex-direction: column; gap: 0.1rem; }
+.w-ewd { width: 175px; }

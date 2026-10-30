@@ -72,8 +72,18 @@ def reset_data(req):
               "template": ["templates"]}.get(what)
     if not tables:
         raise ApiError("Nothing to clear")
+    _admin_only(req)
     con = get_db()
+    from ...services.safety import before_wipe
+    before_wipe("chep", what, tables, con)    # copy kept first - Admin > Cleared data > Put back
     for t in tables:
         con.execute(f"DELETE FROM {t}")
     con.commit()
     return dict(ok=True)
+
+
+def _admin_only(req):
+    from ... import auth
+    who = auth.current(req.cookie)
+    if not who or not who.get("admin"):
+        raise ApiError("Only the admin can clear data. Ask the admin - a copy is kept and can be put back.", 403)

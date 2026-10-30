@@ -84,6 +84,29 @@ def module_route(prefix):
 
 
 def dispatch(request):
+    """Runs the route, then notes a change in the activity list with the user's name (services/safety.audit)."""
+    from .db import CURRENT_USER, LOGGED
+    who = ""
+    if request.cookie or request.method != "GET":
+        try:
+            from . import auth
+            w = auth.current(request.cookie)
+            who = (w or {}).get("user") or ""
+        except Exception:  # noqa: BLE001
+            who = ""
+    CURRENT_USER.set(who)
+    LOGGED.set(False)
+    resp = _dispatch(request)
+    if request.method != "GET" and not LOGGED.get():
+        try:
+            from .services.safety import audit
+            audit(request, resp)
+        except Exception:  # noqa: BLE001 - the log must never break the answer
+            traceback.print_exc()
+    return resp
+
+
+def _dispatch(request):
     from .db import DatabaseUnavailable
     from . import handlers  # noqa: F401  (importing registers every route)
 

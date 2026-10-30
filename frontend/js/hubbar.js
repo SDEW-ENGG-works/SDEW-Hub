@@ -89,6 +89,13 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('hub-has-head', `hub-page-${here}`);
+        // "Clear data" buttons are for the admin only (the server refuses them too)
+        const me = window.HUB_USER;
+        if (me && me.login && !me.admin) {
+            document.querySelectorAll('.card-title').forEach(t => {
+                if (t.textContent.trim() === 'Clear data') t.closest('.card').style.display = 'none';
+            });
+        }
         document.body.insertBefore(bar, document.body.firstChild);
         if (here === 'hub') document.body.insertBefore(home, document.body.firstChild);
         layout();

@@ -185,7 +185,19 @@ CREATE TABLE IF NOT EXISTS open_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, module TEXT, title TEXT, detail TEXT,
     status TEXT DEFAULT 'open', created_at TEXT, done_at TEXT);
 CREATE TABLE IF NOT EXISTS activity(
-    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, module TEXT, action TEXT, detail TEXT);
+    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, module TEXT, action TEXT, detail TEXT, user TEXT);
+
+-- ---------- Safety: login lockout, backups, data cleared with "clear data" (can be put back) ----------
+CREATE TABLE IF NOT EXISTS login_fails(
+    key TEXT PRIMARY KEY, n INTEGER, first_at REAL, locked_until REAL, last_at TEXT);
+CREATE TABLE IF NOT EXISTS backups(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, at TEXT, reason TEXT, user TEXT, host TEXT,
+    size INTEGER, tables TEXT, copy TEXT, note TEXT, gone INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS wipe_snapshots(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, module TEXT, what TEXT, tables TEXT,
+    rows INTEGER, restored_at TEXT, restored_by TEXT);
+CREATE TABLE IF NOT EXISTS wipe_rows(
+    snap_id INTEGER, tbl TEXT, seq INTEGER, data TEXT, PRIMARY KEY(snap_id, tbl, seq));
 """
 
 # columns added after the first version: (table, column, type)
@@ -196,6 +208,7 @@ MIGRATIONS = [
     ("chep_runs", "leap_status", "TEXT"), ("chep_runs", "leap_result", "TEXT"), ("chep_runs", "leap_at", "TEXT"),
     ("invoices", "eway", "TEXT"), ("invoices", "unit_size", "REAL"),
     ("ps_runs", "lines", "BLOB"),
+    ("activity", "user", "TEXT"),
 ]
 
 
@@ -359,13 +372,22 @@ def set_setting(key, value):
     con.commit()
 
 
-def log(module, action, detail=""):
-    """One line in the hub's activity list (Today page)."""
+# who is doing the current request (set by http.dispatch; the PC's background jobs leave it empty)
+import contextvars  # noqa: E402
+
+CURRENT_USER = contextvars.ContextVar("hub_user", default="")
+LOGGED = contextvars.ContextVar("hub_logged", default=False)
+
+
+def log(module, action, detail="", user=None):
+    """One line in the hub's activity list (Today / Follow-ups pages), with the person who did it."""
     from datetime import datetime
     try:
         con = get_db()
-        con.execute("INSERT INTO activity(at, module, action, detail) VALUES(?,?,?,?)",
-                    (datetime.now().isoformat(timespec="seconds"), module, action, str(detail)[:500]))
+        con.execute("INSERT INTO activity(at, module, action, detail, user) VALUES(?,?,?,?,?)",
+                    (datetime.now().isoformat(timespec="seconds"), module, action, str(detail)[:500],
+                     (CURRENT_USER.get() if user is None else user) or ""))
         con.commit()
+        LOGGED.set(True)
     except Exception:  # noqa: BLE001 - never let the log break real work
         pass

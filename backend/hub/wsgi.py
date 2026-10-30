@@ -2,7 +2,7 @@
 import mimetypes
 import os
 
-from . import auth, config
+from . import auth, config, security
 from .assets import index_page
 from .http import Request, dispatch
 
@@ -24,6 +24,14 @@ def _static(path):
 
 
 def app(environ, start_response):
+    """Every answer gets the browser protections of security.py."""
+    def sr(status, headers, exc_info=None):
+        return start_response(status, list(headers) + security.headers(), exc_info) if exc_info else \
+            start_response(status, list(headers) + security.headers())
+    return _app(environ, sr)
+
+
+def _app(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET")
     path = environ.get("PATH_INFO", "/") or "/"
     query = environ.get("QUERY_STRING", "")
@@ -43,6 +51,15 @@ def app(environ, start_response):
             return [b""]
 
     if path.startswith("/api/"):
+        if security.too_big(environ.get("CONTENT_LENGTH")):
+            start_response("413 Too Large", [("Content-Type", "application/json"),
+                                             ("Content-Length", str(len(security.TOO_BIG)))])
+            return [security.TOO_BIG]
+        if not security.same_origin(environ.get("REQUEST_METHOD", "GET"), environ.get("HTTP_ORIGIN"),
+                                    environ.get("HTTP_REFERER"), environ.get("HTTP_X_FORWARDED_HOST") or environ.get("HTTP_HOST")):
+            start_response("403 Forbidden", [("Content-Type", "application/json"),
+                                             ("Content-Length", str(len(security.CROSS_SITE)))])
+            return [security.CROSS_SITE]
         oidc = environ.get("HTTP_X_VERCEL_OIDC_TOKEN")
         if oidc:  # lets this request start a Vercel Sandbox (cloud browser for LEAP) without a token
             os.environ["VERCEL_OIDC_TOKEN"] = oidc
