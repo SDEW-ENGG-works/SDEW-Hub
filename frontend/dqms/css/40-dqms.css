@@ -55,4 +55,4 @@
 
 .eway-dates { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.3rem; font-size: 0.72rem; color: var(--muted); }
 .eway-dates label { display: flex; flex-direction: column; gap: 0.1rem; }
-.w-ewd { width: 175px; }
+.w-ewd { width: 140px; }
