@@ -8,6 +8,7 @@ dependencies = [
     "xlrd>=2.0.1",
     "vercel-sandbox>=0.9",
     "pypdf>=4.0.0",
+    "vercel-blob>=0.5",
 ]
 
 [tool.vercel]

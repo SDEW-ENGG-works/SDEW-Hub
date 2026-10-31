@@ -48,6 +48,31 @@
                 </div>
             </div>
 
+            <div class="card" id="locked-card" style="display:none">
+                <div class="card-title">Locked logins</div>
+                <p class="note-hint">5 wrong passwords in a row lock that login for 15 minutes. Unlock it here if it was the real person.</p>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Username</th><th>Locked until</th><th>Wrong passwords</th><th></th></tr></thead>
+                    <tbody id="locked-tbody"></tbody></table></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Backups</div>
+                    <button class="btn btn-primary btn-sm" id="btn-backup" onclick="backupNow()">Back up now</button>
+                </div>
+                <p class="note-hint" id="backup-info">Loading…</p>
+                <pre class="log-box" id="backup-log" style="display:none;max-height:180px;overflow:auto;font-size:0.75rem"></pre>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Made</th><th>Why</th><th>By</th><th class="num">Rows</th><th class="num">Size</th><th>Copy</th><th></th></tr></thead>
+                    <tbody id="backups-tbody"><tr><td colspan="7" class="muted-cell">Loading…</td></tr></tbody></table></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Cleared data — put back</div>
+                <p class="note-hint">Before any "Clear data" button empties a table, a copy of every row is kept here. <b>Put back</b> adds the rows again (rows added since are kept).</p>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>When</th><th>Who</th><th>Page</th><th>What</th><th class="num">Rows</th><th></th></tr></thead>
+                    <tbody id="wipes-tbody"><tr><td colspan="6" class="muted-cell">Loading…</td></tr></tbody></table></div>
+            </div>
+
             <div class="card">
                 <div class="card-title">How logins work</div>
                 <p class="note-hint" id="admin-info"></p>
@@ -95,6 +120,17 @@
             <div class="confirm-modal-actions">
                 <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
                 <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop" id="restore-modal" onclick="if (event.target === this) closeModal('restore-modal')">
+        <div class="modal-card">
+            <div class="modal-header"><h3>Restore a backup</h3><button class="close-btn" onclick="closeModal('restore-modal')">&times;</button></div>
+            <p class="note-hint" id="restore-text"></p>
+            <div class="form-group" style="margin-top:.8rem"><label>Type RESTORE to confirm</label><input type="text" id="restore-confirm" autocomplete="off"></div>
+            <div class="modal-actions" style="margin-top:1rem">
+                <button class="btn btn-outline" onclick="closeModal('restore-modal')">Cancel</button>
+                <button class="btn btn-danger" id="restore-go" onclick="doRestore()">Restore</button>
             </div>
         </div>
     </div>

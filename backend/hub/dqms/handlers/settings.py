@@ -44,7 +44,11 @@ def reset_data(req):
               "fresh": ["invoices", "portal_status", "dqms_batches"]}.get(what)
     if not tables:
         raise ApiError("Nothing to clear")
+    if what != "fresh":         # "Start fresh" on the Create page is daily work - the rest is admin only
+        _admin_only(req)
     con = get_db()
+    from ...services.safety import before_wipe
+    before_wipe("dqms", what, tables, con, extra_settings=("dqms_report", "dqms.dqms_report"))    # copy kept first - Admin > Cleared data > Put back
     for t in tables:
         con.execute(f"DELETE FROM {t}")
     if what == "runs":
@@ -53,3 +57,10 @@ def reset_data(req):
         con.execute("DELETE FROM settings WHERE key='dqms.dqms_report'")
     con.commit()
     return dict(ok=True)
+
+
+def _admin_only(req):
+    from ... import auth
+    who = auth.current(req.cookie)
+    if not who or not who.get("admin"):
+        raise ApiError("Only the admin can clear data. Ask the admin - a copy is kept and can be put back.", 403)

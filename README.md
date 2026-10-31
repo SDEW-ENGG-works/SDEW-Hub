@@ -161,3 +161,21 @@ switch a user off, delete. A user sees only their boxes, and the server refuses 
 (403). Users are in the `users` table (PBKDF2 password hashes). The old shared `APP_PASSWORD` still logs in
 (leave the username empty) with every page but no Admin - remove it from the env when everyone has a login.
 Code: `backend/hub/auth.py` (who may open what: `needs()`), `handlers/admin.py`, `frontend/admin/`.
+
+## Security and data recovery (29-Oct-2026)
+
+| What | How it works |
+|---|---|
+| **Nightly backup** | The hub on the SDEW PC copies **every table** of the database it uses (Turso or `data\sdew_hub.db`) into `data\backups\sdew_hub_<date>_<time>_nightly.zip` (inside: `sdew_hub.db` + `manifest.json`). After 21:00 (`BACKUP_HOUR`); a PC that was off at night does it as soon as the hub starts. Kept 30 days (`BACKUP_KEEP_DAYS`). |
+| **Second copy** | `BACKUP_COPY_DIR` in `.env` (e.g. `G:\My Drive\SDEW Hub backups` with Google Drive for desktop) gets a copy of every backup, so a dead PC loses nothing. |
+| **Website backups (no PC)** | With a **Vercel Blob** store connected (Vercel > project > Storage > Create > Blob, *Private*), the website makes and restores backups itself: Admin > Back up now / Restore work without the PC, and Vercel Cron calls `/api/cron/backup` every night at 21:00 IST (`vercel.json` `crons`, 15:30 UTC). Files: `backups/sdew_hub_<date>_<time>_<reason>.zip` in the private store, kept 30 days. Set `CRON_SECRET` in the Vercel env so only Vercel Cron can call it. Put `BLOB_READ_WRITE_TOKEN` in the PC's `.env` too and the PC's backups are also kept in Blob. |
+| **Back up now / Restore** | Admin page > Backups. Restore asks you to type RESTORE, makes a "before-restore" backup first (so a restore can be undone), then refills every table. Logins, the backup list and the activity list are kept. On the website these run as jobs on the SDEW PC (it must be on). A backup file can be downloaded on the PC hub. |
+| **Clear data = admin only** | The "Clear data" cards are hidden for other users and the server refuses them (403). DQMS "Start fresh" stays open (daily work). Every clear first copies the rows into `wipe_snapshots` / `wipe_rows`; Admin > Cleared data > **Put back** restores them. |
+| **Who did what** | Every change (upload, file made, setting saved, delete, login, failed login, backup, restore) is in the activity list with the user's name (`activity.user`). |
+| **Lockout** | 5 wrong passwords for one username → locked 15 minutes (works across the PC and the website: table `login_fails`). Admin > Locked logins > Unlock. |
+| **Browser protections** | Every answer carries Content-Security-Policy (only this site + Google Fonts + the Tally Bridge on localhost:9001), X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy, and HSTS on the website. A change sent from another website is refused. Uploads above `MAX_UPLOAD_MB` (50) are refused with 413. |
+
+Code: `backend/hub/services/backup.py`, `services/safety.py`, `security.py`; Admin page `frontend/admin/`.
+Tested 29-Oct on a copy of the data through a mock Turso server: backup = exact copy of every table; restore after
+deleting half the GRIN lines brought every table back exactly; clear-data + put back; lockout; 413 / cross-site refusal;
+website "Back up now" handed to the PC agent; all pages load with the new browser rules (no blocked content).

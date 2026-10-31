@@ -23,6 +23,17 @@ COLS = {name: i for i, name in enumerate([
     "kgs", "vehicle_type", "vehicle", "start", "batch_app", "batch_no", "batch_qty", "batch_cons", "batch_rem"])}
 
 
+def ewb_dt(v, end=False):
+    """'2026-10-30' (date from the page) -> '30.10.2026 00:00' for Valid From, '30.10.2026 23:59' for Valid To
+    (the template asks for dd.MM.yyyy HH:mm). A time typed earlier ('2026-10-30T09:15') is kept."""
+    v = (v or "").strip()
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2})?", v)
+    if m:
+        return f"{m[3]}.{m[2]}.{m[1]} {m[4]}:{m[5]}"
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", v)
+    return f"{m[3]}.{m[2]}.{m[1]} {'23:59' if end else '00:00'}" if m else v
+
+
 def fmt(v):
     """13145.0 -> '13145', 7699.5 -> '7699.5', 384.98 -> '384.98'"""
     if v is None or v == "":
@@ -147,6 +158,7 @@ def build(selected, edits_in=None):
         reason = ed.get("reason") or ""
         remarks = ed.get("remarks") or ""
         eway = re.sub(r"\s", "", ed.get("eway") or inv.get("eway") or "")
+        eway_from, eway_to = (ed.get("eway_from") or "").strip(), (ed.get("eway_to") or "").strip()
         pmsgs = msgs.get(inv["inv_no"], [])
         multi = len(inv["items"]) > 1
         for it in inv["items"] or [dict(part="", descr="", qty=0, amount=0)]:
@@ -177,6 +189,10 @@ def build(selected, edits_in=None):
             if (inv["total"] or 0) > 50000 and not re.fullmatch(r"\d{12}", eway):
                 problems.append("Value above 50,000 - the portal needs the 12-digit E-way Bill No. - type it" if not eway
                                 else f"E-way Bill No. {eway} must be 12 digits")
+            if eway_from and eway_to and eway_to[:10] < eway_from[:10]:
+                problems.append("E-way Bill Valid To date is before Valid From")
+            elif eway and not (eway_from and eway_to):
+                notes.append("E-way Bill Valid From / To not filled - type them if the portal asks")
             # Invoice Unit = number of bins (DR "Request Units"). SDEW types it on the invoice as "Unit Size : n"
             # under Terms of Delivery, so it is used as it is. A loaded DR PDF cross-checks it: qty / DR bin size.
             unit, unit_src, drrow = unit0, ("typed" if unit_typed else "packages"), drmap.get((dr, it["part"]))
@@ -261,7 +277,7 @@ def build(selected, edits_in=None):
             ln = dict(key=key, inv_no=inv["inv_no"], inv_date=inv["inv_date"], order_no=order, plant=plant,
                       part=it["part"], descr=it.get("descr", ""), qty=it.get("qty", 0), rate=it.get("rate"),
                       amount=it.get("amount"), dr=dr, drs=inv["drs"], line=line, line_src=line_src,
-                      reason=reason, remarks=remarks, unit=unit, unit_src=unit_src, eway=eway, total=inv["total"],
+                      reason=reason, remarks=remarks, unit=unit, unit_src=unit_src, eway=eway, eway_from=eway_from, eway_to=eway_to, total=inv["total"],
                       cgst=inv["cgst"], sgst=inv["sgst"], igst=inv["igst"], batches=alloc, deferred=deferred, nosize=nosize,
                       batch_count=len(part_batches), short=short, problems=problems if chosen else [],
                       notes=notes, portal=pmsgs, run_id=inv["run_id"], selected=chosen,
@@ -292,6 +308,8 @@ def build(selected, edits_in=None):
             r[COLS["sgst"]] = fmt(inv["sgst"]) if inv["sgst"] else ""
             r[COLS["igst"]] = fmt(inv["igst"]) if inv["igst"] else ""
             r[COLS["eway"]] = eway
+            r[COLS["eway_from"]] = ewb_dt(eway_from)
+            r[COLS["eway_to"]] = ewb_dt(eway_to, end=True)
             r[COLS["transporter"]] = st["transporter"]
             r[COLS["batch_app"]] = st["batch_applicable"]
             out_rows.append(dict(cells=r, key=key, kind="inv"))

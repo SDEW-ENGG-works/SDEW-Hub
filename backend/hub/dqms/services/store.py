@@ -187,7 +187,7 @@ def save_edits(inv_no, edits):
     if not r:
         raise ApiError("Invoice not found", 404)
     cur = json.loads(r["edits"] or "{}")
-    for k in ("dr", "reason", "remarks", "unit", "eway"):
+    for k in ("dr", "reason", "remarks", "unit", "eway", "eway_from", "eway_to"):
         if k in edits:
             v = str(edits[k] if edits[k] is not None else "").strip()
             if v:

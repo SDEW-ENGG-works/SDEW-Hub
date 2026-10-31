@@ -165,7 +165,7 @@ async function loadToday(quiet) {
         <li>${modTag(it.module)}<span class="x" title="${esc(it.detail)}">${esc(it.title)}</span></li>`).join('') ||
         '<li><span class="x hint">Nothing open</span></li>';
     document.getElementById('today-activity').innerHTML = d.activity.map(a => `
-        <li><span class="w">${esc(when(a.at))}</span>${modTag(a.module)}<span class="x">${esc(a.action)}${a.detail ? ' — ' + esc(a.detail) : ''}</span></li>`).join('') ||
+        <li><span class="w">${esc(when(a.at))}</span>${modTag(a.module)}<span class="x">${a.user ? `<b>${esc(a.user)}</b> ` : ''}${esc(a.action)}${a.detail ? ' — ' + esc(a.detail) : ''}</span></li>`).join('') ||
         '<li><span class="x hint">No activity yet</span></li>';
 }
 
@@ -369,7 +369,7 @@ async function loadItems() {
             : `<span class="hint no-margin">done ${esc(dmy(it.done_at))}</span> <button class="oi-done" onclick="setItem(${it.id}, 'open')">reopen</button>`}</td>
         </tr>`).join('');
     document.getElementById('activity-list').innerHTML = act.map(a => `
-        <li><span class="w">${esc(when(a.at))}</span>${modTag(a.module)}<span class="x">${esc(a.action)}${a.detail ? ' — ' + esc(a.detail) : ''}</span></li>`).join('') ||
+        <li><span class="w">${esc(when(a.at))}</span>${modTag(a.module)}<span class="x">${a.user ? `<b>${esc(a.user)}</b> ` : ''}${esc(a.action)}${a.detail ? ' — ' + esc(a.detail) : ''}</span></li>`).join('') ||
         '<li><span class="x hint">No activity yet</span></li>';
 }
 async function setItem(id, status) {

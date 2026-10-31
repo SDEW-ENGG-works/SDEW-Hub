@@ -34,12 +34,27 @@ function renderSources() {
         <span class="chip"><b>${inr(p.vouchers, 0)}</b> vouchers</span>
         <span class="chip"><b>${inr(p.n, 0)}</b> lines</span>` : '';
     document.getElementById('voucher-count-badge').textContent = inr(p.vouchers || 0, 0);
+    showLink('register', 'src-register-link', r);
+}
+
+// "Linked to your file" line on a source card, and the Save button's state
+async function showLink(kind, elId, current) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const rec = current ? await fsFile.info(kind) : null;
+    const ok = rec && (!rec.fileId || rec.fileId === current.id);
+    el.innerHTML = !fsFile.supported ? '<span class="link-off">Save into your own file needs Chrome or Edge</span>'
+        : ok ? `<span class="link-on">✓ Linked to <b>${esc(rec.name)}</b> on this computer — Save writes into it</span>`
+        : current ? '<span class="link-off">Not linked to a file on this computer — drop or choose the file again to Save into it</span>' : '';
+    const btn = document.getElementById(kind === 'register' ? 'btn-save-file' : 'btn-sales-save-file');
+    if (btn) btn.style.display = fsFile.supported ? '' : 'none';
 }
 
 function renderSummary() {
     const run = appState.run;
     const set = (id, v) => { document.getElementById(id).textContent = v; };
     document.getElementById('btn-marked').disabled = !run;
+    document.getElementById('btn-save-file').disabled = !run;
     document.getElementById('btn-report').disabled = !run;
     if (!run) {
         ['st-mark', 'st-done', 'st-look', 'st-none'].forEach(id => set(id, '—'));
@@ -190,6 +205,34 @@ async function downloadMarked() {
     }
 }
 
+// Save: the marked register is written straight into the file it was uploaded from (no download)
+async function saveMarkedToFile() {
+    const run = appState.run;
+    if (!run) return;
+    if (!run.summary.to_mark) {
+        const ok = await confirmBox('Nothing is ticked', 'No invoice is ticked for marking. Save the register unchanged?');
+        if (!ok) return;
+    }
+    const rec = await fsFile.info('register');
+    if (!rec) return showToast('This register is not linked to a file on this computer. Drop it again (or click the drop box and choose it), check, then Save.', 'danger', 8000);
+    const btn = document.getElementById('btn-save-file');
+    setBusy(btn, true, 'Saving…');
+    try {
+        // ask the browser for permission first (it must happen right after the click), then build the marked file
+        await fsFile.allow('register', run.register_file);
+        const marked = await fetchBlob('/api/pay/export/marked');
+        const name = await fsFile.save('register', marked, run.register_file);
+        await refreshBootstrap();
+        if (appState.register) await fsFile.setFileId('register', appState.register.id);
+        renderSources();
+        showToast(`${inr(run.summary.to_mark, 0)} invoices marked and saved into <b>${esc(name)}</b>. The earlier version is kept on the Uploads page.`, 'success', 8000);
+    } catch (e) {
+        showToast(esc(e.message), 'danger', 9000);
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
 function downloadReport() {
     downloadFile('/api/pay/export/report', document.getElementById('btn-report'), 'Payment_Check.xlsx');
 }
@@ -201,6 +244,7 @@ async function refreshPage() {
     setBusy(btn, true, 'Clearing…');
     try {
         await apiJson('/api/pay/refresh', 'POST', {});
+        await fsFile.unlink('register');
         appState.cat = '';
         appState.offset = 0;
         document.getElementById('line-search').value = '';

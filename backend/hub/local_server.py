@@ -3,7 +3,7 @@ import http.server
 import os
 import sys
 
-from . import auth, config
+from . import auth, config, security
 from .assets import index_page, stamp_index_files
 from .db import get_db
 from .http import Request, dispatch
@@ -27,13 +27,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", LONG_CACHE)
         else:
             self.send_header("Cache-Control", "no-cache")
+        for k, v in security.headers():
+            self.send_header(k, v)
         super().end_headers()
 
+    def _refuse(self, status, body):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _api(self):
+        if security.too_big(self.headers.get("Content-Length")):
+            self.close_connection = True
+            return self._refuse(413, security.TOO_BIG)
+        if not security.same_origin(self.command, self.headers.get("Origin"), self.headers.get("Referer"),
+                                    self.headers.get("Host")):
+            return self._refuse(403, security.CROSS_SITE)
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
         req = Request(self.command, self.path, body)
         req.cookie = self.headers.get("Cookie") or ""
+        req.headers = {"authorization": self.headers.get("Authorization") or "",
+                       "user-agent": self.headers.get("User-Agent") or ""}
         resp = dispatch(req)
         if config.db_mode() == "cloud":
             try:  # Turso: send any writes still queued
@@ -152,6 +169,11 @@ def run_server(port=None):
         start_pc_jobs()
     except Exception as e:  # noqa: BLE001
         print("[PC jobs] not started:", e)
+    try:  # nightly backup of the whole database (data\\backups, + BACKUP_COPY_DIR)
+        from .services.backup import start_nightly
+        start_nightly()
+    except Exception as e:  # noqa: BLE001
+        print("[Backup] nightly backup not started:", e)
     try:  # CHEP: jobs sent from the website reach this PC through the shared cloud database
         from .chep.services.leap_remote import start_agent
         start_agent()

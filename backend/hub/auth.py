@@ -24,7 +24,8 @@ from . import config
 
 COOKIE = "sdew_hub_auth"
 MAX_AGE = 30 * 24 * 3600  # stay logged in for 30 days
-PUBLIC_PREFIXES = ("/login.html", "/api/login", "/api/logout", "/api/auth", "/css/", "/assets/")
+PUBLIC_PREFIXES = ("/login.html", "/api/login", "/api/logout", "/api/auth", "/css/", "/assets/",
+                   "/api/cron/")      # Vercel Cron: checked with CRON_SECRET in handlers/admin.py
 
 # the pages a user can be given (key, name shown on the Admin page)
 PAGES = [("today", "Today"), ("supp", "Supplementary Bill"), ("chep", "CHEP Transfer"), ("dqms", "DQMS Upload"),

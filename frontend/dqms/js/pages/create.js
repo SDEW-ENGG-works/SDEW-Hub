@@ -259,7 +259,9 @@ function renderLines() {
             <td>${batches}</td>
             <td>${first ? `<select class="cell-input w-reason ${l.problems.some(p => p.includes('Reason for Gap')) ? 'need' : ''}" data-inv="${inv}" onchange="setEdit(this.dataset.inv, 'reason', this.value)">${reasonOptions(l.reason)}</select>` : ''}</td>
             <td>${first ? `<input class="cell-input w-rem" value="${esc(l.remarks)}" data-inv="${inv}" onchange="setEdit(this.dataset.inv, 'remarks', this.value)">` +
-                (l.total > 50000 || l.eway ? `<input class="cell-input w-rem ${l.total > 50000 && !/^\d{12}$/.test(l.eway || '') ? 'need' : ''}" style="margin-top:.3rem" value="${esc(l.eway || '')}" placeholder="E-way bill no" title="E-way Bill No. (12 digits) - needed above ₹50,000" data-inv="${inv}" onchange="setEdit(this.dataset.inv, 'eway', this.value)">` : '') : ''}</td>
+                (l.total > 50000 || l.eway ? `<input class="cell-input w-rem ${l.total > 50000 && !/^\d{12}$/.test(l.eway || '') ? 'need' : ''}" style="margin-top:.3rem" value="${esc(l.eway || '')}" placeholder="E-way bill no" title="E-way Bill No. (12 digits) - needed above ₹50,000" data-inv="${inv}" onchange="setEdit(this.dataset.inv, 'eway', this.value)">`
+                    + `<div class="eway-dates"><label>Valid from<input type="date" class="cell-input w-ewd" value="${esc((l.eway_from || '').slice(0, 10))}" title="E-Way Bill Valid From" data-inv="${inv}" onchange="setEdit(this.dataset.inv, 'eway_from', this.value)"></label>`
+                    + `<label>Valid to<input type="date" class="cell-input w-ewd ${l.eway_from && l.eway_to && l.eway_to.slice(0, 10) < l.eway_from.slice(0, 10) ? 'need' : ''}" value="${esc((l.eway_to || '').slice(0, 10))}" title="E-Way Bill Valid To" data-inv="${inv}" onchange="setEdit(this.dataset.inv, 'eway_to', this.value)"></label></div>` : '') : ''}</td>
             <td>${first ? `<button class="btn btn-danger-text btn-sm" title="Remove this invoice from the app" data-inv="${inv}" onclick="removeInvoice(this.dataset.inv)">✕</button>` : ''}</td></tr>`;
         const sub = checks.length ? `<tr class="check-row ${rowCls.replace('inv-first', '')}"><td></td><td colspan="12"><ul class="check-list">${checks.join('')}</ul></td></tr>` : '';
         return main + sub;
@@ -311,10 +313,10 @@ function renderPreview() {
     const rows = appState.preview.rows;
     document.getElementById('preview-sub').textContent = rows.length ? `· ${rows.length} rows (+ heading row) — same columns as TAFE's template.csv` : '';
     const c = r => r.cells;
-    const IDX = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 25, 26, 27, 28];
+    const IDX = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 25, 26, 27, 28];
     document.getElementById('preview-tbody').innerHTML = rows.length ? rows.map((r, i) =>
         `<tr class="${r.kind === 'batch' ? 'batch-row' : 'inv-row'}"><td class="rn">${i + 2}</td>${IDX.map(k => `<td>${esc(c(r)[k])}</td>`).join('')}</tr>`
-    ).join('') : `<tr><td colspan="20" class="muted-cell">Nothing to put in the template yet</td></tr>`;
+    ).join('') : `<tr><td colspan="23" class="muted-cell">Nothing to put in the template yet</td></tr>`;
 }
 
 async function generateFile() {

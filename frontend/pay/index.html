@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="css/05-ratecard.css?v=a6e7e5b643">
     <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
     <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
-    <link rel="stylesheet" href="css/30-pay.css?v=042331501c">
+    <link rel="stylesheet" href="css/30-pay.css?v=ec01101502">
     <link rel="stylesheet" href="/css/hub.css?v=c1b1bbf517">
     <script src="/js/hubbar.js?v=46564c536e"></script>
 </head>
@@ -68,6 +68,10 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Check report
                     </button>
+                    <button class="btn btn-primary" id="btn-save-file" onclick="saveMarkedToFile()" disabled title="Write the marks into the register file you uploaded (Chrome / Edge)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save to my register file
+                    </button>
                     <button class="btn btn-secondary" id="btn-marked" onclick="downloadMarked()" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Download marked register
@@ -86,6 +90,7 @@
                         <div><div class="card-title">Invoice register</div><div class="stat-sub" id="src-register-sub">Not uploaded</div></div>
                     </div>
                     <div class="source-body" id="src-register-body"></div>
+                    <div class="source-link" id="src-register-link"></div>
                 </div>
                 <div class="card source-card" id="src-payments">
                     <div class="source-head">
@@ -160,6 +165,10 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Check report
                     </button>
+                    <button class="btn btn-primary" id="btn-sales-save-file" onclick="saveSalesToFile()" disabled title="Write GRN NO / DATE / QTY into the sales file you uploaded (Chrome / Edge)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save to my sales file
+                    </button>
                     <button class="btn btn-secondary" id="btn-sales-marked" onclick="downloadSalesMarked()" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Download marked sales file
@@ -178,6 +187,7 @@
                         <div><div class="card-title">TAFE SALES DETAILS file</div><div class="stat-sub" id="src-sales-sub">Not uploaded</div></div>
                     </div>
                     <div class="source-body" id="src-sales-body"></div>
+                    <div class="source-link" id="src-sales-link"></div>
                 </div>
                 <div class="card source-card" id="src-grin">
                     <div class="source-head">
@@ -348,9 +358,10 @@
     <div id="toast-container"></div>
 
     <script src="js/core/utils.js?v=f0aeaaa393"></script>
-    <script src="js/pages/check.js?v=e1d8b2c60c"></script>
-    <script src="js/pages/uploads.js?v=e191256f96"></script>
-    <script src="js/pages/sales.js?v=4489f5051d"></script>
+    <script src="js/core/fsfile.js?v=c13f46f335"></script>
+    <script src="js/pages/check.js?v=6b5fc583c4"></script>
+    <script src="js/pages/uploads.js?v=c07aa5cf19"></script>
+    <script src="js/pages/sales.js?v=9b6650f866"></script>
     <script src="js/pages/settings.js?v=97cdec6544"></script>
     <script src="js/main.js?v=65eb60f54d"></script>
 </body>
