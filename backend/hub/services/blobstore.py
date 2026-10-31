@@ -1,7 +1,8 @@
 """Vercel Blob: where the WEBSITE keeps its backups (a Vercel function has no disk that lasts).
 
-Turned on by BLOB_READ_WRITE_TOKEN - Vercel adds it to the project when a Blob store is connected
-(Vercel > Storage > Create > Blob, private, connect to the project). Put the same token in the PC's .env
+Turned on when a Blob store is connected to the project (Vercel > Storage > Create > Blob, private):
+Vercel adds BLOB_STORE_ID (the website then signs in with its OIDC token) or, for older stores,
+BLOB_READ_WRITE_TOKEN. Put the same token in the PC's .env
 and the PC's backups are copied to Blob too.
 Backups are stored as  backups/sdew_hub_<date>_<time>_<reason>.zip  in a PRIVATE store (nobody can open
 them without the token).
@@ -26,8 +27,17 @@ def access():
         else "private"
 
 
+def _store_id():
+    """New Vercel Blob stores connect with BLOB_STORE_ID + the function's OIDC token (no token env)."""
+    return (os.environ.get("BLOB_STORE_ID") or "").strip()
+
+
+def _oidc_ok():
+    return bool(_store_id()) and (config.ON_VERCEL or bool(os.environ.get("VERCEL_OIDC_TOKEN")))
+
+
 def enabled():
-    if not _token():
+    if not _token() and not _oidc_ok():
         return False
     try:
         import vercel.blob.sync  # noqa: F401
@@ -37,8 +47,8 @@ def enabled():
 
 
 def why_not():
-    if not _token():
-        return "No Blob store connected (BLOB_READ_WRITE_TOKEN is not set)"
+    if not _token() and not _oidc_ok():
+        return "No Blob store connected (BLOB_STORE_ID or BLOB_READ_WRITE_TOKEN is not set)"
     try:
         import vercel.blob.sync  # noqa: F401
     except ImportError:
