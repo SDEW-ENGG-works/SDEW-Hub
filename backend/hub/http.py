@@ -25,6 +25,7 @@ class Request:
         self._body_bytes = body_bytes or b""
         self.params = {}
         self.cookie = ""          # the Cookie header (set by the server) - who is logged in: auth.current(req.cookie)
+        self.headers = {}         # a few request headers, lower-case names (set by the server)
 
     def arg(self, name, default=""):
         return self.query.get(name, [default])[0]

@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS login_fails(
     key TEXT PRIMARY KEY, n INTEGER, first_at REAL, locked_until REAL, last_at TEXT);
 CREATE TABLE IF NOT EXISTS backups(
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, at TEXT, reason TEXT, user TEXT, host TEXT,
-    size INTEGER, tables TEXT, copy TEXT, note TEXT, gone INTEGER DEFAULT 0);
+    size INTEGER, tables TEXT, copy TEXT, note TEXT, gone INTEGER DEFAULT 0, cloud TEXT);
 CREATE TABLE IF NOT EXISTS wipe_snapshots(
     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, module TEXT, what TEXT, tables TEXT,
     rows INTEGER, restored_at TEXT, restored_by TEXT);
@@ -209,6 +209,7 @@ MIGRATIONS = [
     ("invoices", "eway", "TEXT"), ("invoices", "unit_size", "REAL"),
     ("ps_runs", "lines", "BLOB"),
     ("activity", "user", "TEXT"),
+    ("backups", "cloud", "TEXT"),
 ]
 
 

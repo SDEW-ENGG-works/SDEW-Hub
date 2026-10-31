@@ -70,6 +70,8 @@ def _app(environ, start_response):
         body = environ["wsgi.input"].read(length) if length else b""
         req = Request(method, path + ("?" + query if query else ""), body)
         req.cookie = environ.get("HTTP_COOKIE") or ""
+        req.headers = {"authorization": environ.get("HTTP_AUTHORIZATION") or "",
+                       "user-agent": environ.get("HTTP_USER_AGENT") or ""}
         resp = dispatch(req)
         try:  # Turso: send any writes still queued
             from .db import commit_all

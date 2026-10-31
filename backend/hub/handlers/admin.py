@@ -129,24 +129,36 @@ def _remote():
 def safety_info(req):
     _admin(req)
     from ..services import backup, pc_jobs, safety
-    return dict(backups=backup.listing(), backup=backup.info(), remote=_remote(),
+    return dict(backups=backup.listing(), backup=backup.info(), remote=_remote() and not _website_blob(),
+                website=_remote(),
                 agent=pc_jobs.agent_info() if _remote() else None,
                 job=_job_status(), wipes=safety.snapshots(), locked=safety.locked_list())
 
 
 def _job_status():
     from ..services import backup, pc_jobs
-    if not _remote():
+    if not _remote() or _website_blob():
         return dict(backup.STATUS)
     a, b = pc_jobs.latest("backup"), pc_jobs.latest("restore")
     kind = "restore" if b and (not a or b["id"] > a["id"]) else "backup"
     return pc_jobs.status(kind)
 
 
+def _website_blob():
+    """The website with a Vercel Blob store: backups / restores are done right here, no PC needed."""
+    from ..services import blobstore
+    return _remote() and blobstore.enabled()
+
+
 @route("POST", r"/api/admin/backup")
 def backup_now(req):
     who = _admin(req)
     from ..services import backup, pc_jobs
+    if _website_blob():
+        try:
+            return backup.run_now("backup", dict(reason="manual"), user=who["user"])
+        except RuntimeError as e:
+            raise ApiError(str(e))
     if _remote():
         try:
             return pc_jobs.queue("backup", dict(reason="manual", user=who["user"]))
@@ -167,6 +179,11 @@ def restore_backup(req):
     if not one("SELECT id FROM backups WHERE name=?", (name,)):
         raise ApiError("Backup not found")
     from ..services import backup, pc_jobs
+    if _website_blob():
+        try:
+            return backup.run_now("restore", dict(name=name), user=who["user"])
+        except RuntimeError as e:
+            raise ApiError(str(e))
     if _remote():
         try:
             return pc_jobs.queue("restore", dict(name=name, user=who["user"]))
@@ -220,3 +237,36 @@ def unlock_login(req):
         raise ApiError("Which login?")
     safety.unlock(name)
     return dict(ok=True)
+
+
+# ------------------------------------------------------------------ Vercel Cron: nightly backup of the website
+@route("GET", r"/api/cron/backup")
+def cron_backup(req):
+    """Called by Vercel Cron (vercel.json "crons"). With CRON_SECRET set, Vercel sends it as
+    'Authorization: Bearer <CRON_SECRET>' and nothing else may run this. Without it, only one backup per
+    20 hours can be started this way (so the open link cannot be misused to fill the store)."""
+    import hmac
+    import os
+    from datetime import datetime, timedelta
+    from .. import config
+    from ..services import backup, blobstore
+    secret = os.environ.get("CRON_SECRET") or config.read_env().get("CRON_SECRET") or ""
+    auth_h = (req.headers or {}).get("authorization", "")
+    if secret:
+        if not hmac.compare_digest(auth_h, f"Bearer {secret}"):
+            raise ApiError("Not allowed", 401)
+    else:
+        last = one("SELECT at FROM backups WHERE reason='nightly' ORDER BY at DESC LIMIT 1")
+        if last and last["at"] > (datetime.now() - timedelta(hours=20)).isoformat(timespec="seconds"):
+            return dict(ok=True, skipped=f"a nightly backup was made at {last['at']}")
+    if not blobstore.enabled():
+        raise ApiError("No Blob store connected: " + blobstore.why_not(), 503)
+    st = backup.run_now("backup", dict(reason="nightly"), user="nightly (website)")
+    if st.get("error"):
+        raise ApiError(st["error"], 500)
+    try:
+        from ..db import set_setting
+        set_setting("hub.last_cloud_backup", datetime.now().isoformat(timespec="seconds"))
+    except Exception:  # noqa: BLE001
+        pass
+    return dict(ok=True, result=st.get("result"))

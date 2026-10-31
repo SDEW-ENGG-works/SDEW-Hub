@@ -92,19 +92,25 @@ async function loadSafety() {
         document.getElementById('backup-info').textContent = e.message; return;
     }
     const b = d.backup, last = b.last_nightly;
-    const where = d.remote
-        ? `Backups are made by the hub on the SDEW PC${d.agent && d.agent.online ? ` (${esc(d.agent.host)}, online)` : ' — <b>the PC is not connected now</b>'}.`
-        : `Backups are saved in <b>${esc(b.dir)}</b>.`;
-    document.getElementById('backup-info').innerHTML = `${where} Every night after ${b.hour}:00 (or as soon as the PC hub starts if it was off), kept ${b.keep_days} days. ` +
-        (b.copy_dir ? `A copy goes to <b>${esc(b.copy_dir)}</b>. ` : 'No second copy yet — set <b>BACKUP_COPY_DIR</b> in .env on the PC (e.g. a Google Drive folder). ') +
+    const web = d.website && b.blob;          // the website keeps its own backups in Vercel Blob
+    const where = web
+        ? 'The website saves its backups in <b>Vercel Blob</b> (private storage) — no PC needed.'
+        : d.remote
+        ? `Backups are made by the hub on the SDEW PC${d.agent && d.agent.online ? ` (${esc(d.agent.host)}, online)` : ' — <b>the PC is not connected now</b>'}. ` +
+          `<span class="muted">To back up from the website without the PC, connect a Blob store (Vercel &gt; Storage &gt; Blob).</span>`
+        : `Backups are saved in <b>${esc(b.dir)}</b>${b.blob ? ' and in <b>Vercel Blob</b>' : ''}.`;
+    const second = web ? '' : (b.copy_dir ? `A copy goes to <b>${esc(b.copy_dir)}</b>. ` : 'No second copy yet — set <b>BACKUP_COPY_DIR</b> in .env on the PC (e.g. a Google Drive folder). ');
+    document.getElementById('backup-info').innerHTML = `${where} ` +
+        (web ? 'Every night at 9 PM a backup is made automatically, kept ' : `Every night after ${b.hour}:00 (or as soon as the PC hub starts if it was off), kept `) +
+        `${b.keep_days} days. ` + second +
         (last ? `Last nightly backup: <b>${esc(when(last.at))}</b>.` : '<b>No nightly backup yet.</b>');
     document.getElementById('backups-tbody').innerHTML = d.backups.length ? d.backups.map(x => `
         <tr style="${x.gone ? 'opacity:.5' : ''}"><td>${esc(when(x.at))}</td><td>${esc(x.reason)}</td><td>${esc(x.user || '')}</td>
             <td class="num">${(x.rows || 0).toLocaleString('en-IN')}</td><td class="num">${kb(x.size)}</td>
-            <td>${x.copy ? (x.copy.startsWith('FAILED') ? '<span class="status-badge warn">copy failed</span>' : '<span class="status-badge active">yes</span>') : ''}</td>
+            <td>${x.cloud === 'blob' ? '<span class="status-badge active">Blob</span> ' : ''}${x.copy ? (x.copy.startsWith('FAILED') ? '<span class="status-badge warn">copy failed</span>' : '<span class="status-badge active">yes</span>') : ''}</td>
             <td><div class="row-btns">${x.gone ? '<span class="muted">deleted (older than kept)</span>' : `
                 ${!d.remote && x.here ? `<a class="btn btn-outline btn-sm" href="/api/admin/backup/file?name=${encodeURIComponent(x.name)}">Download</a>` : ''}
-                <button class="btn btn-danger-text btn-sm" onclick="askRestore('${esc(x.name)}', '${esc(when(x.at))}')">Restore</button>`}</div></td></tr>`).join('')
+                ${web && x.cloud !== 'blob' ? '<span class="muted">on the PC only</span>' : `<button class="btn btn-danger-text btn-sm" onclick="askRestore('${esc(x.name)}', '${esc(when(x.at))}')">Restore</button>`}`}</div></td></tr>`).join('')
         : '<tr><td colspan="7" class="muted-cell">No backups yet — press Back up now</td></tr>';
     document.getElementById('wipes-tbody').innerHTML = d.wipes.length ? d.wipes.map(w => `
         <tr><td>${esc(when(w.at))}</td><td>${esc(w.user || '')}</td><td>${esc(w.module)}</td><td>${esc(w.what)} <span class="muted">(${esc(JSON.parse(w.tables || '[]').join(', '))})</span></td>
@@ -133,8 +139,14 @@ function showJob(st) {
 }
 
 async function backupNow() {
-    try { showJob(await apiJson('/api/admin/backup', 'POST', {})); showToast('Backup started', 'success'); }
-    catch (e) { showToast(e.message, 'danger', 8000); }
+    const btn = document.getElementById('btn-backup'); btn.disabled = true;
+    try {
+        const st = await apiJson('/api/admin/backup', 'POST', {});
+        if (st.error) showToast(st.error, 'danger', 10000);
+        else showToast(st.running ? 'Backup started' : 'Backup done', 'success');
+        if (st.running) showJob(st); else { await loadSafety(); showJob(st); }
+    }
+    catch (e) { showToast(e.message, 'danger', 8000); btn.disabled = false; }
 }
 
 function askRestore(name, at) {
@@ -149,8 +161,9 @@ async function doRestore() {
     try {
         const st = await apiJson('/api/admin/restore', 'POST', { name: _restoreName, confirm: document.getElementById('restore-confirm').value });
         closeModal('restore-modal');
-        showToast('Restore started — keep this page open', 'success');
-        showJob(st);
+        if (st.error) showToast(st.error, 'danger', 10000);
+        else showToast(st.running ? 'Restore started — keep this page open' : 'Restore done', 'success');
+        if (st.running) showJob(st); else { await loadSafety(); showJob(st); }
     } catch (e) { showToast(e.message, 'danger', 8000); }
 }
 

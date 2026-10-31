@@ -10,7 +10,11 @@
   Restore      Admin page > Backups > Restore: a backup of NOW is made first ("before restore"), then every
                table is emptied and filled from the chosen backup. Logins (users), the backup list and the
                activity list are kept as they are.
-  The website cannot write files, so its Back up now / Restore buttons are jobs for the PC (services/pc_jobs).
+  Website      With a Vercel Blob store connected (BLOB_READ_WRITE_TOKEN, services/blobstore.py) the website makes
+               its own backups: every night by Vercel Cron (/api/cron/backup) and with Back up now, kept in Blob
+               for the same 30 days, and it can restore from them - no PC needed. With the token in the PC's .env,
+               the PC's backups are copied to Blob as well. Without Blob, the website hands Back up now / Restore
+               to the SDEW PC (services/pc_jobs).
 """
 import json
 import os
@@ -26,6 +30,7 @@ from datetime import datetime, timedelta
 
 from .. import config
 from ..db import CURRENT_USER, get_db, log, one, rows, set_setting, get_setting
+from . import blobstore
 
 PAGE = 2000                # rows read per query
 BATCH = 400                # rows written per commit when restoring
@@ -107,7 +112,8 @@ def make(reason="manual", user=None):
         out.commit()
         out.close()
         manifest = dict(name=name, at=stamp.isoformat(timespec="seconds"), reason=reason,
-                        user=CURRENT_USER.get() if user is None else user, host=socket.gethostname(),
+                        user=CURRENT_USER.get() if user is None else user,
+                        host="website (Vercel)" if config.ON_VERCEL else socket.gethostname(),
                         source=config.db_mode(), tables=counts)
         path = os.path.join(backup_dir(), name)
         with zipfile.ZipFile(path + ".part", "w", zipfile.ZIP_DEFLATED) as z:
@@ -128,16 +134,34 @@ def make(reason="manual", user=None):
         except OSError as e:
             copied = f"FAILED: {e}"
             _log(f"Copy to {cd} failed: {e}")
+    cloud = ""
+    if blobstore.enabled():
+        try:
+            with open(path, "rb") as fh:
+                blobstore.put(name, fh.read())
+            cloud = "blob"
+            _log("Saved in Vercel Blob")
+        except Exception as e:  # noqa: BLE001
+            cloud = f"FAILED: {e}"
+            _log(f"Saving in Vercel Blob failed: {e}")
+        if config.ON_VERCEL and cloud == "blob":
+            try:                              # the function's /tmp is wiped anyway
+                os.remove(path)
+            except OSError:
+                pass
+    if config.ON_VERCEL and cloud != "blob":
+        raise RuntimeError("The website could not save the backup in Vercel Blob: " + (cloud or blobstore.why_not()))
     con = get_db()
-    con.execute("INSERT OR REPLACE INTO backups(name, at, reason, user, host, size, tables, copy, gone) "
-                "VALUES(?,?,?,?,?,?,?,?,0)", (name, manifest["at"], reason, manifest["user"], manifest["host"], size,
-                                               json.dumps(counts), copied))
+    con.execute("INSERT OR REPLACE INTO backups(name, at, reason, user, host, size, tables, copy, cloud, gone) "
+                "VALUES(?,?,?,?,?,?,?,?,?,0)", (name, manifest["at"], reason, manifest["user"], manifest["host"], size,
+                                                 json.dumps(counts), copied, cloud))
     con.commit()
     log("hub", "backup made", f"{name} ({size // 1024} KB, {sum(counts.values())} rows)"
-        + (f", copy in {copied}" if copied and not copied.startswith("FAILED") else ""),
+        + (f", copy in {copied}" if copied and not copied.startswith("FAILED") else "")
+        + (", saved in Vercel Blob" if cloud == "blob" else ""),
         user=manifest["user"])
     prune()
-    return dict(name=name, size=size, tables=counts, copy=copied)
+    return dict(name=name, size=size, tables=counts, copy=copied, cloud=cloud)
 
 
 def prune():
@@ -155,16 +179,25 @@ def prune():
                         pass
         except OSError:
             pass
+    if blobstore.enabled():
+        try:
+            old = [n for n in blobstore.names() if n.startswith("sdew_hub_") and n[9:17].isdigit() and n[9:17] < cutoff]
+            if old:
+                blobstore.delete(old)
+                gone += old
+        except Exception as e:  # noqa: BLE001
+            _log(f"Could not tidy old backups in Vercel Blob: {e}")
     if gone:
         con = get_db()
         for f in set(gone):
-            con.execute("UPDATE backups SET gone=1 WHERE name=?", (f,))
+            con.execute("UPDATE backups SET gone=1 WHERE name=? AND substr(name,10,8) < ?", (f, cutoff))
         con.commit()
 
 
 def listing():
     """Backups known to the database, newest first, with 'here' = the file is on this computer."""
-    out = rows("SELECT id, name, at, reason, user, host, size, tables, copy, gone FROM backups ORDER BY at DESC LIMIT 200")
+    out = rows("SELECT id, name, at, reason, user, host, size, tables, copy, cloud, gone FROM backups "
+               "ORDER BY at DESC LIMIT 200")
     local = set(os.listdir(backup_dir())) if not config.ON_VERCEL else set()
     for r in out:
         t = json.loads(r.pop("tables") or "{}")
@@ -173,11 +206,23 @@ def listing():
     return out
 
 
-def _find(name):
+def _find(name, fetch=True):
+    """Path of the backup file: on this computer, in the copy folder, or fetched from Vercel Blob."""
     for d in filter(None, [backup_dir(), copy_dir()]):
         p = os.path.join(d, os.path.basename(name))
         if os.path.exists(p):
             return p
+    if fetch and blobstore.enabled():
+        try:
+            data = blobstore.get(name)
+        except Exception as e:  # noqa: BLE001
+            _log(f"Not found in Vercel Blob: {e}")
+            return None
+        p = os.path.join(backup_dir(), os.path.basename(name))
+        with open(p, "wb") as fh:
+            fh.write(data)
+        _log(f"Fetched {os.path.basename(name)} from Vercel Blob ({len(data) // 1024} KB)")
+        return p
     return None
 
 
@@ -186,7 +231,7 @@ def restore(name, user=None):
     """Puts the whole database back to a backup. A backup of now is made first."""
     path = _find(name)
     if not path:
-        raise FileNotFoundError(f"{name} is not in data\\backups (or the copy folder) on this PC")
+        raise FileNotFoundError(f"{name} is not in data\\backups, the copy folder or Vercel Blob")
     _log("First a backup of the data as it is now")
     before = make("before-restore", user=user)
     tmpd = tempfile.mkdtemp(prefix="hubrs_")
@@ -307,4 +352,16 @@ def start_nightly():
 def info():
     last = one("SELECT name, at, size, copy FROM backups WHERE reason='nightly' ORDER BY at DESC LIMIT 1")
     return dict(dir=None if config.ON_VERCEL else backup_dir(), copy_dir=copy_dir(), keep_days=keep_days(),
-                hour=nightly_hour(), last_nightly=last, status=dict(STATUS))
+                hour=nightly_hour(), last_nightly=last, status=dict(STATUS),
+                blob=blobstore.enabled(), blob_why=blobstore.why_not())
+
+
+def run_now(kind, params=None, user=None):
+    """The website: do it inside this request (a Vercel function stops its threads once it has answered)."""
+    with _lock:
+        if STATUS["running"]:
+            raise RuntimeError("A backup or restore is already running")
+        STATUS.update(running=True, log=[], started=datetime.now().isoformat(timespec="seconds"), finished="",
+                      error="", result=None)
+    _run(kind, params or {}, user)
+    return dict(STATUS)

@@ -49,6 +49,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         req = Request(self.command, self.path, body)
         req.cookie = self.headers.get("Cookie") or ""
+        req.headers = {"authorization": self.headers.get("Authorization") or "",
+                       "user-agent": self.headers.get("User-Agent") or ""}
         resp = dispatch(req)
         if config.db_mode() == "cloud":
             try:  # Turso: send any writes still queued

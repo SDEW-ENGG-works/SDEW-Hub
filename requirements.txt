@@ -3,5 +3,7 @@ xlrd>=2.0.1
 pypdf>=4.0.0
 # website: starts the Vercel Sandbox (cloud browser) for the LEAP upload
 vercel-sandbox>=0.9
+# website: keeps the website's backups in Vercel Blob (Option A)
+vercel-blob>=0.5
 # only for Fetch GRIN, the DQMS report button and the LEAP upload (PC only):
 # playwright>=1.40   then run:  python -m playwright install chromium
