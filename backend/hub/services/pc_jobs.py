@@ -133,7 +133,7 @@ def _run(job):
         mod, started = tally, tally.start(s["tally_url"], s["tally_companies"], d1, d2, {x["party"] for x in plants()})
     else:
         from ..supp.services import grin_portal
-        mod, started = grin_portal, grin_portal.start(d1, d2, headed=False)
+        mod, started = grin_portal, grin_portal.start(d1, d2, headed=bool(p.get("headed")))
     if not started:
         _push(job["id"], dict(log=["Already running on the PC - wait and press again"], error="busy"), final=True)
         return

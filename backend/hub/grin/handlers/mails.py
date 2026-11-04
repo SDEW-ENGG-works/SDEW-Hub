@@ -30,6 +30,14 @@ def send(req):
         raise ApiError(str(e))
 
 
+@route("POST", r"/api/mails/test")
+def test_mail(req):
+    try:
+        return mailer.test(str(req.json.get("to") or ""))
+    except RuntimeError as e:
+        raise ApiError(str(e))
+
+
 @route("GET", r"/api/mails/eml")
 def eml(req):
     key = urllib.parse.unquote(req.arg("key"))

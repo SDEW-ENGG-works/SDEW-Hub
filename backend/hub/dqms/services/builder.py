@@ -109,6 +109,50 @@ def _last_upload(kind, still_there):
     return dict(at=cur.get("at", ""), items=items) if items else {}
 
 
+def _fifo(part_batches, bal, need):
+    """Take need from the part's batches, oldest first, from the balances in bal (not changed here)."""
+    out = []
+    for bt in part_batches:
+        if need <= 0:
+            break
+        av = bal.get(bt["batch_no"], 0)
+        if av <= 0:
+            continue
+        t = min(av, need)
+        need -= t
+        out.append(dict(batch_no=bt["batch_no"], qty=t, balance=av, created=bt["created"]))
+    return out, round(need, 3)
+
+
+def _plan_next_uploads(held, batches, left):
+    """Held invoices go in later uploads. Each later upload follows the same portal rule, starting from the
+    balances the earlier uploads leave: an invoice goes in when its batches, taken one after the other in the
+    file, are the same as the portal would pick from the balances before that upload."""
+    pool, pending, rnd = dict(left), list(held), 2
+    while pending and rnd < 30:
+        start_r, cur, nxt = dict(pool), dict(pool), []
+        for ln in pending:
+            pb = batches.get(ln["part"], [])
+            need = float(ln.get("qty") or 0)
+            alloc, short = _fifo(pb, cur, need)
+            ind, _ = _fifo(pb, start_r, need)
+            if short > 0:
+                ln["upload_round"] = None
+                ln["batches"] = alloc
+                continue
+            if [(a["batch_no"], a["qty"]) for a in alloc] == [(a["batch_no"], a["qty"]) for a in ind]:
+                for a in alloc:
+                    cur[a["batch_no"]] = cur.get(a["batch_no"], 0) - a["qty"]
+                ln["upload_round"], ln["batches"] = rnd, alloc
+            else:
+                nxt.append(ln)
+        if len(nxt) == len(pending):
+            for ln in nxt:
+                ln["upload_round"] = None
+            break
+        pool, pending, rnd = cur, nxt, rnd + 1
+
+
 def build(selected, edits_in=None):
     """selected: invoice numbers to put in the file (in invoice-number order).
     edits_in: {inv_no: {dr, reason, remarks, unit}} not yet saved (the page sends what is on screen)."""
@@ -127,7 +171,8 @@ def build(selected, edits_in=None):
     for lst in batches.values():
         lst.sort(key=lambda b: (b["created"] or "", b["batch_no"]), reverse=newest_first)
     left = {b["batch_no"]: b["balance"] for lst in batches.values() for b in lst}
-    start = dict(left)   # what the portal sees: it checks every invoice against the balance at the start of the upload
+    start = dict(left)
+    used_by = {}         # batch -> invoices in this file that take from it (to say why an invoice is held)   # what the portal sees: it checks every invoice against the balance at the start of the upload
 
     drmap = {(r["dr_no"], r["part"]): r for r in rows("SELECT * FROM delivery_requests")}
     lines, out_rows, warnings = [], [], []
@@ -262,6 +307,16 @@ def build(selected, edits_in=None):
                 if short <= 0 and [(a["batch_no"], a["qty"]) for a in alloc] != ind:
                     deferred = True
                     left.update(before)
+                    for bn, _q in ind:
+                        if used_by.get(bn):
+                            others = list(dict.fromkeys(used_by[bn]))
+                            notes.append(f"Held because batch {bn} ({fmt(start.get(bn, 0))} left before this upload) is "
+                                         f"taken by {', '.join(others)} earlier in this file - the portal would make this "
+                                         f"invoice use the same batch")
+                            break
+                else:
+                    for a in alloc:
+                        used_by.setdefault(a["batch_no"], []).append(inv["inv_no"])
             if nosize:
                 problems, unit, unit_src = [], None, "none"
             elif chosen and need > 0 and not part_batches:
@@ -327,6 +382,7 @@ def build(selected, edits_in=None):
             if inv["run_id"]:
                 summary["in_file"] += 1
     summary["rows"] = len(out_rows)
+    _plan_next_uploads([ln for ln in lines if ln.get("deferred") and ln["selected"]], batches, left)
     summary["value"] = round(summary["value"], 2)
 
     rep = report_info()

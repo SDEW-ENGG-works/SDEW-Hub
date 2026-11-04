@@ -70,7 +70,14 @@ def start(d1, d2, headed=False):
         if STATUS["running"]:
             return False
         STATUS.update(running=True, log=[], started=datetime.now().isoformat(timespec="seconds"), finished="", error="")
-    target = _run if method() == "browser" else _run_http
+    # "Show the browser" ticked: always the real browser (so it opens on this PC's screen), even if
+    # GRIN_FETCH=http is set - as long as Playwright is installed here
+    use_browser = method() == "browser" or (headed and browser_available())
+    target = _run if use_browser else _run_http
+    if headed and not use_browser:
+        _log("The website cannot show a browser - start the hub on the SDEW PC (start.bat) to see it. Fetching without it"
+             if config.ON_VERCEL else
+             "The browser cannot be shown (Playwright is not installed on this computer) - fetching without it")
     if config.ON_VERCEL:
         target(d1, d2, headed)
     else:

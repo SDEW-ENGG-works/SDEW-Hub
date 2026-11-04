@@ -12,6 +12,7 @@ Without SMTP a mail can still be downloaded as .eml and sent from Outlook / Gmai
 import html
 import json
 import smtplib
+import socket
 import ssl
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
@@ -30,6 +31,7 @@ def smtp_settings():
     return dict(host=host, port=int(env.get("SMTP_PORT") or 587), user=env.get("SMTP_USER", ""),
                 password=env.get("SMTP_PASS", ""), sender=env.get("MAIL_FROM") or env.get("SMTP_USER", ""),
                 ssl=str(env.get("SMTP_SSL", "")).lower() in ("1", "true", "yes"),
+                ehlo=(env.get("SMTP_EHLO") or "").strip(),
                 ready=bool(host and env.get("SMTP_USER") and env.get("SMTP_PASS")))
 
 
@@ -172,17 +174,9 @@ def send(drafts):
                            "hub's .env file (Gmail: smtp.gmail.com, 587, an App Password) and restart the hub.")
     results = []
     server = None
+    ehlos = _ehlo_names(m)
     try:
-        if m["ssl"] or m["port"] == 465:
-            server = smtplib.SMTP_SSL(m["host"], m["port"], context=ssl.create_default_context(), timeout=60)
-        else:
-            server = smtplib.SMTP(m["host"], m["port"], timeout=60)
-            server.ehlo()
-            if server.has_extn("starttls"):
-                server.starttls(context=ssl.create_default_context())
-                server.ehlo()
-        if server.has_extn("auth"):
-            server.login(m["user"], m["password"])
+        server = _connect(m, ehlos[0])
         for d in drafts:
             to, cc = d["to"], d["cc"]
             if s["test_to"]:
@@ -191,8 +185,20 @@ def send(drafts):
                 results.append(dict(key=d["key"], ok=False, error=d["problem"] or "No e-mail address"))
                 continue
             try:
-                server.send_message(_message(d, m["sender"], to, cc), from_addr=m["sender"],
-                                    to_addrs=_addrs(to) + _addrs(cc))
+                msg = _message(d, m["sender"], to, cc)
+                try:
+                    server.send_message(msg, from_addr=m["sender"], to_addrs=_addrs(to) + _addrs(cc))
+                except smtplib.SMTPSenderRefused:
+                    # Yahoo answers '554 Email rejected' to some computer names in EHLO: try the next name once
+                    if len(ehlos) < 2:
+                        raise
+                    try:
+                        server.quit()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    ehlos = ehlos[1:]
+                    server = _connect(m, ehlos[0])
+                    server.send_message(msg, from_addr=m["sender"], to_addrs=_addrs(to) + _addrs(cc))
                 mid = _record(d, "Sent" if not s["test_to"] else "Test", to, cc)
                 results.append(dict(key=d["key"], ok=True, mail_id=mid, to=to, invoices=len(d["invoices"])))
             except Exception as e:  # noqa: BLE001
@@ -207,6 +213,104 @@ def send(drafts):
     n = sum(1 for r in results if r["ok"])
     log("grin", "GRIN reminders", f"{n} mail(s) {'(test)' if s['test_to'] else 'sent'}")
     return results
+
+
+def _ehlo_names(m):
+    """Names the hub introduces itself with (EHLO). SMTP_EHLO in .env wins. Else: Python's default (this PC's
+    name), then the PC's address in brackets (the RFC form when a computer has no domain name)."""
+    if m.get("ehlo"):
+        return [m["ehlo"]]
+    names = [None]
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((m["host"] or "8.8.8.8", 80))
+        names.append(f"[{s.getsockname()[0]}]")
+        s.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return names
+
+
+def _connect(m, ehlo_name, port=None, steps=None):
+    """Connected and logged in. Port 465 = SSL from the start, else STARTTLS."""
+    steps = steps if steps is not None else []
+    port = port or m["port"]
+    ctx = ssl.create_default_context()
+    if m["ssl"] and port == m["port"] or port == 465:
+        server = smtplib.SMTP_SSL(m["host"], port, local_hostname=ehlo_name, context=ctx, timeout=60)
+    else:
+        server = smtplib.SMTP(m["host"], port, local_hostname=ehlo_name, timeout=60)
+    steps.append("connected")
+    code, resp = server.ehlo()
+    steps.append(f"EHLO {server.local_hostname} -> {code}")
+    if not isinstance(server, smtplib.SMTP_SSL) and server.has_extn("starttls"):
+        server.starttls(context=ctx)
+        server.ehlo()
+        steps.append("STARTTLS ok")
+    if server.has_extn("auth"):
+        server.login(m["user"], m["password"])
+        steps.append("login OK")
+    return server
+
+
+def test(to):
+    """Sends one short plain test mail and says step by step where it fails. Tries the EHLO names and both
+    ports (465 SSL / 587 STARTTLS) until one works; the working one is what to put in .env."""
+    m = smtp_settings()
+    if not m["ready"]:
+        raise RuntimeError("Mail is not set up: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS in .env")
+    if not _addrs(to):
+        raise RuntimeError("Give an e-mail address to send the test to")
+    ports = [m["port"]] + [p for p in (465, 587) if p != m["port"]]
+    tries = []
+    for port in ports:
+        for name in _ehlo_names(m):
+            t = dict(port=port, ehlo=name or "(PC name)", steps=[], ok=False)
+            tries.append(t)
+            server = None
+            step = "connect"
+            try:
+                server = _connect(m, name, port, t["steps"])
+                step = "sender (MAIL FROM)"
+                code, resp = server.mail(m["sender"])
+                if code != 250:
+                    raise smtplib.SMTPSenderRefused(code, resp, m["sender"])
+                t["steps"].append("sender accepted")
+                step = "recipient (RCPT TO)"
+                for a in _addrs(to):
+                    code, resp = server.rcpt(a)
+                    if code not in (250, 251):
+                        raise smtplib.SMTPRecipientsRefused({a: (code, resp)})
+                t["steps"].append("recipient accepted")
+                step = "message (DATA)"
+                msg = EmailMessage()
+                msg["Subject"] = "SDEW Hub test mail"
+                msg["From"] = formataddr(("Sri Durga Engg. Works", m["sender"]))
+                msg["To"] = ", ".join(_addrs(to))
+                msg["Date"] = formatdate(localtime=True)
+                msg["Message-ID"] = make_msgid(domain=m["sender"].split("@")[-1])
+                msg.set_content(f"Test mail from the SDEW Hub, sent {datetime.now():%d-%m-%Y %H:%M}. Mail is working.")
+                code, resp = server.data(msg.as_bytes())
+                if code != 250:
+                    raise smtplib.SMTPDataError(code, resp)
+                t["steps"].append("message accepted")
+                t["ok"] = True
+            except smtplib.SMTPAuthenticationError as e:
+                t["error"] = f"login: {e.smtp_code} {e.smtp_error.decode(errors='replace') if isinstance(e.smtp_error, bytes) else e.smtp_error}"
+            except Exception as e:  # noqa: BLE001
+                t["error"] = f"{step}: {e}"
+            finally:
+                if server:
+                    try:
+                        server.quit()
+                    except Exception:  # noqa: BLE001
+                        pass
+            if t["ok"]:
+                log("grin", "test mail sent", f"to {to} via port {port}, EHLO {name}")
+                return dict(ok=True, tries=tries, use=dict(port=port, ehlo=name))
+            if "login:" in t.get("error", ""):
+                return dict(ok=False, tries=tries)          # a wrong password will not get better
+    return dict(ok=False, tries=tries)
 
 
 def eml(d):
