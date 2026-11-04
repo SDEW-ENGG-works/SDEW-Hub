@@ -43,13 +43,14 @@ def sync(req):
         a = pc_jobs.agent_info()
         if a and a["online"]:      # the SDEW PC fetches it (browser, Indian address) into the shared database
             try:
-                return dict(pc_jobs.queue("grin_fetch", {"from": d1.isoformat(), "to": d2.isoformat()}), queued=True, done=False)
+                return dict(pc_jobs.queue("grin_fetch", {"from": d1.isoformat(), "to": d2.isoformat(),
+                                                          "headed": bool(body.get("headed"))}), queued=True, done=False)
             except RuntimeError as e:
                 raise ApiError(str(e))
     if not grin_portal.start(d1, d2, headed=bool(body.get("headed"))):
         raise ApiError("A GRIN sync is already running")
-    st = grin_portal.STATUS
-    return dict(started=True, done=not st["running"], **st)
+    st = dict(grin_portal.STATUS)          # STATUS has its own 'started' (the time) - do not pass it twice
+    return dict(st, ok=True, done=not st["running"])
 
 
 @route("GET", r"/api/grin/sync")

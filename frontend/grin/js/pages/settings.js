@@ -50,3 +50,19 @@ async function saveSettings() {
         showToast(e.message, 'danger');
     }
 }
+
+
+async function sendTestMail() {
+    const to = document.getElementById('mail-test-to').value.trim();
+    if (!to) { showToast('Type the address to send the test to', 'warn'); return; }
+    const btn = document.getElementById('btn-mail-test'), box = document.getElementById('mail-test-log');
+    btn.disabled = true; box.style.display = ''; box.textContent = 'Sending…';
+    try {
+        const r = await apiJson('/api/grin/mails/test', 'POST', { to });
+        box.textContent = r.tries.map(t => `port ${t.port}, name ${t.ehlo}: ${t.ok ? 'SENT' : 'failed'} — ` +
+            (t.steps.join(', ') || '') + (t.error ? ` — ${t.error}` : '')).join('\n') +
+            (r.ok ? `\n\nWorking. Check the inbox (and Spam) of ${to}.` : '\n\nNot sent - see the reason above.');
+        showToast(r.ok ? 'Test mail sent' : 'Test mail failed', r.ok ? 'success' : 'danger', 8000);
+    } catch (e) { box.textContent = e.message; showToast(e.message, 'danger', 8000); }
+    btn.disabled = false;
+}

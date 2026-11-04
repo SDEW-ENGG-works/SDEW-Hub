@@ -240,7 +240,12 @@ function renderLines() {
         const checks = [];
         l.problems.forEach(p => checks.push(`<li class="bad-text">${esc(p)}</li>`));
         if (l.nosize && l.selected) checks.push(`<li class="nosize-text">⚠ No Unit Size on this invoice and no DR PDF - left out of the file. Add Unit Size in Tally, drop the DR PDF, or type the Invoice Unit.</li>`);
-        if (l.deferred) checks.push(`<li class="hold-text">Held for the 2nd upload: an earlier invoice in this file uses the same batch. Upload this file, drop a fresh DQMS report, then download again.</li>`);
+        if (l.deferred) {
+            const nth = n => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
+            checks.push(l.upload_round
+                ? `<li class="hold-text">Held for the ${nth(l.upload_round)} upload - the batches shown are what it takes then. Upload this file, drop a fresh DQMS report, then download again${l.upload_round > 2 ? ' (repeat until it goes in)' : ''}.</li>`
+                : `<li class="hold-text">Held: not enough batch balance for it even after the next uploads.</li>`);
+        }
         (l.notes || []).forEach(n => checks.push(`<li class="warn-text">${esc(n)}</li>`));
         if (first) (l.portal || []).filter(m => m.message).forEach(m => checks.push(
             `<li class="${(m.status || '').toUpperCase() === 'SUCCESS' ? 'ok-text' : 'portal-text'}">Last portal upload (${esc(m.record === 'BATCH_DTLS' ? 'batch row' : 'invoice row')}): ${esc(m.message)}</li>`));
