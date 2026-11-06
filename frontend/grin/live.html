@@ -41,6 +41,17 @@ async function tick() {
         const st = await (await fetch('/api/supp/grin/sync', { cache: 'no-store' })).json();
         polls++;
         if (first === null) first = st.started || '';
+        // on the website the SDEW PC runs the browser: say at once when it is not connected
+        if (st.agent && !st.agent.online && !st.running) {
+            $('dot').className = 'dot bad';
+            $('state').textContent = 'SDEW PC not connected';
+            $('wait').innerHTML = '<b>The SDEW PC hub is not running</b>' +
+                (st.agent.at ? ` (last seen ${new Date(st.agent.at).toLocaleString()})` : '') + '.<br><br>' +
+                'The website is fetching GRIN now without a browser - the GRIN page shows the result.<br>' +
+                'To watch the browser: on the SDEW PC double-click <b>start.bat</b>, keep its window open, then press Fetch GRIN again.';
+            if (polls > 3) { done = true; }
+            return;
+        }
         if (st.running) sawRun = true;
         const ours = sawRun || (st.started || '') !== first;
         if (!ours) {
