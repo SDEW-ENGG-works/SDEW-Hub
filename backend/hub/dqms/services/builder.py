@@ -202,6 +202,14 @@ def build(selected, edits_in=None):
                 order_note = f"Buyer's Order No. {order} is not a known PO - check it in Tally"
         reason = ed.get("reason") or ""
         remarks = ed.get("remarks") or ""
+        # Final Invoice Value is compulsory on the portal. If the PDF's total line could not be read, work it
+        # out as the lines + tax (Tally rounds the invoice to whole rupees).
+        total_note = ""
+        if inv["total"] is None and inv["items"]:
+            calc = sum(float(i.get("amount") or 0) for i in inv["items"]) + sum(float(inv.get(k) or 0) for k in ("cgst", "sgst", "igst"))
+            inv["total"] = float(round(calc))
+            total_note = (f"Invoice total not read from the PDF - taken as lines + tax = {fmt(inv['total'])}. "
+                          "Check it against the invoice.")
         eway = re.sub(r"\s", "", ed.get("eway") or inv.get("eway") or "")
         eway_from, eway_to = (ed.get("eway_from") or "").strip(), (ed.get("eway_to") or "").strip()
         pmsgs = msgs.get(inv["inv_no"], [])
@@ -234,6 +242,10 @@ def build(selected, edits_in=None):
             if (inv["total"] or 0) > 50000 and not re.fullmatch(r"\d{12}", eway):
                 problems.append("Value above 50,000 - the portal needs the 12-digit E-way Bill No. - type it" if not eway
                                 else f"E-way Bill No. {eway} must be 12 digits")
+            if total_note:
+                notes = [n for n in notes if n != "Invoice total not found"] + [total_note]
+            if inv["total"] is None:
+                problems.append("Final Invoice Value missing - the invoice total could not be read. Drop the invoice PDF again")
             if eway_from and eway_to and eway_to[:10] < eway_from[:10]:
                 problems.append("E-way Bill Valid To date is before Valid From")
             elif eway and not (eway_from and eway_to):

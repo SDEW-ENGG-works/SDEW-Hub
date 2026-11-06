@@ -25,7 +25,9 @@ ITEM_RE = re.compile(
     r"^\s*(\d{1,3})\s+([0-9A-Za-z][0-9A-Za-z.\-/]{4,20}?)\s*-\s*(.+?)\s{2,}(\d{4,8})\s+.*?"
     r"([\d,]+\.\d{1,3})\s+([A-Za-z]{2,5})\s+([\d,]+\.\d{1,4})\s+[A-Za-z]{2,5}\s+([\d,]+\.\d{2})\s*$")
 TAX_RE = re.compile(r"Output\s+(IGST|CGST|SGST|UTGST)\b[^\n]*?(-?[\d,]+\.\d{2})\s*$", re.M)
-TOTAL_RE = re.compile(r"^\s*Total\s+.*?([\d,]+\.\d{2})\s*(?:₹|Rs\.?|INR)?\s*$", re.M)
+# the grand total line: "Total   50.000 QTY   8,084.00 ₹". The rupee sign can come out of the PDF as another
+# character (or a few), so any short non-number mark after the amount is allowed.
+TOTAL_RE = re.compile(r"^\s*Total\s+.*?([\d,]+\.\d{2})\s*(?:Rs\.?|INR|[^\d\s.,]{1,4})?\s*$", re.M)
 ROUND_RE = re.compile(r"Round\s*Off\s+(\(-\))?\s*(-?[\d,]+\.\d{2})")
 PKG_RE = re.compile(r"No\.?\s*of\s*Pack\w*\s*:\s*(\d+)", re.I)
 DR_RE = re.compile(r"(?<![A-Za-z])D\.?D?\.?R\.?\s*(?:No\.?)?\s*[:.\-]?\s*(\d{6,10})\b", re.I)
@@ -110,15 +112,7 @@ def parse_page(text):
     for m in TAX_RE.finditer(text):
         taxes[m[1].lower()] = round(taxes.get(m[1].lower(), 0) + _num(m[2]), 2)
 
-    # grand total = the "Total   50.000 QTY   8,084.00 ₹" line (not the tax summary's "Total")
-    total = None
-    cut = text.find("Amount Chargeable")
-    for m in TOTAL_RE.finditer(text):
-        if "₹" in m.group(0) or "INR" in m.group(0) or "Rs" in m.group(0):
-            total = _num(m.group(1))
-            break
-        if total is None and (cut < 0 or m.start() < cut):
-            total = _num(m.group(1))
+    total = _grand_total(text)
     rnd = ROUND_RE.search(text)
     round_off = (-1 if rnd and rnd.group(1) else 1) * _num(rnd.group(2)) if rnd else 0.0
 
@@ -132,6 +126,18 @@ def parse_page(text):
                 total=total, round_off=round_off, packages=int(pk.group(1)) if pk else None, drs=drs,
                 unit_size=unit_size,
                 consignee=_consignee(text))
+
+
+def _grand_total(text):
+    """The "Total   50.000 QTY   8,084.00 ₹" line (not the tax summary's "Total" below "Amount Chargeable")."""
+    total = None
+    cut = text.find("Amount Chargeable")
+    for m in TOTAL_RE.finditer(text):
+        if "₹" in m.group(0) or "INR" in m.group(0) or "Rs" in m.group(0):
+            return _num(m.group(1))
+        if total is None and (cut < 0 or m.start() < cut):
+            total = _num(m.group(1))
+    return total
 
 
 def _consignee(text):
@@ -151,6 +157,9 @@ def parse_pdf(data):
         if not p:
             if text.strip() and cur:
                 warnings.append(f"Page {n}: no invoice number - read as part of {cur}")
+                # the last page of a long invoice can carry the total without the invoice number
+                if invoices[cur]["total"] is None:
+                    invoices[cur]["total"] = _grand_total(text)
             continue
         no = p["inv_no"]
         if no not in invoices:
