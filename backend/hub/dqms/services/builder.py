@@ -24,6 +24,11 @@ COLS = {name: i for i, name in enumerate([
 
 
 def ewb_dt(v, end=False):
+    """TAFE changed the template (Nov 2026): E-Way Bill Valid From / To are now dd.MM.yyyy, no time."""
+    return _ewb_dt_time(v, end)[:10]
+
+
+def _ewb_dt_time(v, end=False):
     """'2026-10-30' (date from the page) -> '30.10.2026 00:00' for Valid From, '30.10.2026 23:59' for Valid To
     (the template asks for dd.MM.yyyy HH:mm). A time typed earlier ('2026-10-30T09:15') is kept."""
     v = (v or "").strip()
@@ -422,7 +427,7 @@ def build(selected, edits_in=None):
                         "Only send them again if that upload failed.")
     return dict(lines=lines, rows=out_rows, warnings=warnings, summary=summary, report=rep, uploads=upload_info(invs),
                 selected=sorted(sel),
-                header=st["header"], settings=st)
+                header=[h.replace("(dd.MM.yyyy HH:mm)", "(dd.MM.yyyy)") for h in st["header"]], settings=st)
 
 
 def to_csv(header, out_rows):

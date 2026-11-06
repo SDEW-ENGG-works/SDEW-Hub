@@ -5,7 +5,7 @@ from ..db import get_setting
 TEMPLATE_HEADER = [
     "Record Flag*", "DR No.*", "Order No.*", "PO Line Item No.*", "Part No.*", "Reason for Gap", "Remarks",
     "Invoice No.*", "Invoice Date(dd.MM.yyyy)*", "Invoice Unit*", "Final Invoice Value*", "CGST", "SGST", "IGST",
-    "E-way Bill No.", "E-Way Bill Valid From (dd.MM.yyyy HH:mm)", "E-Way Bill Valid To (dd.MM.yyyy HH:mm)",
+    "E-way Bill No.", "E-Way Bill Valid From (dd.MM.yyyy)", "E-Way Bill Valid To (dd.MM.yyyy)",
     "Transporter*", "LR No.", "LR Date (dd.MM.yyyy)", "No. of Packages", "Weight in Kgs", "Type of Vehicle",
     "Vehicle Number", "Start Date (dd.MM.yyyy)", "Batch Details Applicable", "Batch No.",
     "Batch Qty. to be Consumed", "Batch Considerable (Yes / No)", "Remarks when Batch Considerable 'No'",
