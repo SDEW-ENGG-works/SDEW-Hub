@@ -118,7 +118,9 @@ async function tallyPull() {
     btn.disabled = true;
     badge.className = 'status-badge sent'; badge.textContent = 'Reading Tally…';
     let total = 0, host = '';
-    const from = document.getElementById('tally-from').value, to = document.getElementById('tally-to').value;
+    const picked = pickDates('tally-from', 'tally-to');
+    if (!picked) return;
+    const { from, to } = picked;
     try {
         const p = await bridgePing();
         if (!p) throw new Error(BRIDGE_HELP);
@@ -185,12 +187,14 @@ function pollTally() {
 }
 
 async function grinFetch() {
+    const picked = pickDates('grin-from', 'grin-to');
+    if (!picked) return;
     if (document.getElementById('grin-headed').checked) openGrinWindow();
     document.getElementById('btn-grin').disabled = true;
     showToast('Fetching GRIN from TAFE Channel…', 'info');
     try {
         const r = await apiJson('/api/supp/grin/sync', 'POST', {
-            from: document.getElementById('grin-from').value, to: document.getElementById('grin-to').value,
+            from: picked.from, to: picked.to,
             headed: document.getElementById('grin-headed').checked });
         if (r.done && _grinWin && !_grinWin.closed) {      // the website fetched it itself: no browser to show
             _grinWin.close();
@@ -279,11 +283,13 @@ function showPay(st) {
     document.getElementById('btn-pay').disabled = !!st.running;
 }
 async function payFetch() {
+    const picked = pickDates('pay-from', 'pay-to');
+    if (!picked) return;
     document.getElementById('btn-pay').disabled = true;
     showPay({ running: true, log: ['Logging in to TAFE Channel…'] });
     try {
         const r = await apiJson('/api/grin/payments/fetch', 'POST', {
-            from: document.getElementById('pay-from').value, to: document.getElementById('pay-to').value });
+            from: picked.from, to: picked.to });
         showPay(r);
         if (r.done) {
             showToast(r.error ? esc(r.error) : 'Payments loaded from TAFE Channel', r.error ? 'danger' : 'success', 9000);

@@ -14,11 +14,6 @@ const DCN_KIND = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    const t = new Date();
-    const fy = t.getMonth() >= 3 ? t.getFullYear() : t.getFullYear() - 1;
-    const f = document.getElementById('dcn-from'), to = document.getElementById('dcn-to');
-    if (f) f.value = `${fy}-04-01`;
-    if (to) to.value = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     api('/api/grin/notes/fetch').then(showDcn).catch(() => { });
     dcnKv();
 });
@@ -49,7 +44,8 @@ async function dcnKv() {
 
 let _dcnTimer = null;
 async function dcnFetch() {
-    const body = { from: document.getElementById('dcn-from').value, to: document.getElementById('dcn-to').value };
+    const body = pickDates('dcn-from', 'dcn-to');
+    if (!body) return;
     document.getElementById('btn-dcn').disabled = true;
     showDcn({ running: true, log: ['Logging in to TAFE Channel…'] });
     const finish = st => {

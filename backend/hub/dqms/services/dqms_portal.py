@@ -27,7 +27,8 @@ from .. import config
 
 DEFAULT_REPORT_PATH = "/meta/default/wm_xt_fabricfolder/0003064229"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
-TIMEOUT = 60
+TIMEOUT = 75                 # seconds to wait for one answer
+TRIES = 2                    # TAFE Channel sometimes hangs once and answers the next try
 
 
 class PortalError(Exception):
@@ -113,9 +114,23 @@ class _Session:
                                               urllib.request.HTTPSHandler(context=ctx))
         self.op.addheaders = [("User-Agent", UA), ("Accept-Language", "en-IN,en;q=0.9")]
 
+    def _open(self, req):
+        """TAFE Channel sometimes hangs on one request for minutes, then answers the next one at once.
+        So: wait TIMEOUT seconds, then try again with a fresh connection (TRIES times in all)."""
+        last = None
+        for n in range(TRIES):
+            try:
+                with self.op.open(req, timeout=TIMEOUT) as r:
+                    return r.geturl(), r.headers, r.read()
+            except Exception as e:  # noqa: BLE001
+                if not _slow(e) or n == TRIES - 1:
+                    raise
+                last = e
+                print(f"[TAFE Channel] no answer in {TIMEOUT} s - trying again ({n + 2} of {TRIES})")
+        raise last
+
     def get(self, url):
-        with self.op.open(urllib.parse.urljoin(self.base + "/", url), timeout=TIMEOUT) as r:
-            return r.geturl(), r.headers, r.read()
+        return self._open(urllib.parse.urljoin(self.base + "/", url))
 
     def post(self, url, fields, referer=None):
         data = urllib.parse.urlencode(fields).encode()
@@ -123,8 +138,14 @@ class _Session:
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
         if referer:
             req.add_header("Referer", referer)
-        with self.op.open(req, timeout=TIMEOUT) as r:
-            return r.geturl(), r.headers, r.read()
+        return self._open(req)
+
+
+def _slow(e):
+    """A time-out / dropped connection (worth one more try), not a real error answer."""
+    m = str(e).lower()
+    return any(w in m for w in ("timed out", "timeout", "errno 110", "connection reset", "remote end closed",
+                                "connection aborted", "temporarily unavailable"))
 
 
 def _text(b):
@@ -187,8 +208,11 @@ def fetch_report():
         raise
     except Exception as e:  # noqa: BLE001  (network trouble, portal down ...)
         msg = str(e)
-        if config.ON_VERCEL and ("timed out" in msg.lower() or "errno 110" in msg.lower()):
-            region = __import__("os").environ.get("VERCEL_REGION", "?")
+        region = __import__("os").environ.get("VERCEL_REGION", "")
+        if _slow(e) and not (config.ON_VERCEL and region and not region.startswith("bom")):
+            raise PortalError(f"TAFE Channel did not answer for {TIMEOUT * TRIES // 60} minutes (it is slow or down "
+                              "right now). Press Get DQMS report again in a few minutes.")
+        if config.ON_VERCEL and _slow(e):
             raise PortalError(f"TAFE Channel did not answer the website's server (Vercel region {region}). "
                               "TAFE Channel only accepts connections from India - the site must run in bom1 "
                               "(Mumbai, see vercel.json). Until then: fetch on the PC app, or download the "

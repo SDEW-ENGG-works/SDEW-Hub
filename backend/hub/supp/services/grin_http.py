@@ -22,7 +22,8 @@ from html.parser import HTMLParser
 from .. import config
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
-TIMEOUT = 90
+TIMEOUT = 75                 # seconds to wait for one answer
+TRIES = 2                    # TAFE Channel sometimes hangs once and answers the next try
 FORM = "jsfwmp11990:defaultForm"
 FROM_SUFFIX = "dateInput__date"
 TO_SUFFIX = "htmlInputText3__date"
@@ -91,9 +92,23 @@ class _Session:
                                               urllib.request.HTTPSHandler(context=ssl.create_default_context()))
         self.op.addheaders = [("User-Agent", UA), ("Accept-Language", "en-IN,en;q=0.9")]
 
+    def _open(self, req):
+        """TAFE Channel sometimes hangs on one request for minutes, then answers the next one at once.
+        So: wait TIMEOUT seconds, then try again with a fresh connection (TRIES times in all)."""
+        last = None
+        for n in range(TRIES):
+            try:
+                with self.op.open(req, timeout=TIMEOUT) as r:
+                    return r.geturl(), r.headers, r.read()
+            except Exception as e:  # noqa: BLE001
+                if not _slow(e) or n == TRIES - 1:
+                    raise
+                last = e
+                print(f"[TAFE Channel] no answer in {TIMEOUT} s - trying again ({n + 2} of {TRIES})")
+        raise last
+
     def get(self, url):
-        with self.op.open(urllib.parse.urljoin(self.base + "/", url), timeout=TIMEOUT) as r:
-            return r.geturl(), r.headers, r.read()
+        return self._open(urllib.parse.urljoin(self.base + "/", url))
 
     def post(self, url, fields, referer=None):
         req = urllib.request.Request(urllib.parse.urljoin(self.base + "/", url),
@@ -101,8 +116,7 @@ class _Session:
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
         if referer:
             req.add_header("Referer", referer)
-        with self.op.open(req, timeout=TIMEOUT) as r:
-            return r.geturl(), r.headers, r.read()
+        return self._open(req)
 
 
 def _text(b):
@@ -163,11 +177,25 @@ def login(env):
 
 
 def _net_msg(e):
-    msg = str(e)
-    if config.ON_VERCEL and ("timed out" in msg.lower() or "errno 110" in msg.lower()):
-        return ("TAFE Channel did not answer the website's server. It only accepts connections from India - "
-                "check that vercel.json has \"regions\": [\"bom1\"], or press Fetch GRIN on the SDEW PC.")
+    if _slow(e):
+        region = os.environ.get("VERCEL_REGION", "")
+        if config.ON_VERCEL and region and not region.startswith("bom"):
+            return (f"TAFE Channel did not answer the website's server in {region}. It only accepts connections "
+                    "from India - vercel.json must have \"regions\": [\"bom1\"].")
+        return slow_msg(e)
     return f"Could not reach TAFE Channel: {e}"
+
+def _slow(e):
+    """A time-out / dropped connection (worth one more try), not a real error answer."""
+    m = str(e).lower()
+    return any(w in m for w in ("timed out", "timeout", "errno 110", "connection reset", "remote end closed",
+                                "connection aborted", "temporarily unavailable"))
+
+
+def slow_msg(e, what="TAFE Channel"):
+    return (f"{what} did not answer for {TIMEOUT * TRIES // 60} minutes (it is slow or down right now). "
+            "Press the button again in a few minutes.")
+
 
 
 def fetch_month(s, d1, d2):

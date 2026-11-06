@@ -43,6 +43,7 @@ function showSyncStatus(st) {
 }
 
 async function startSync() {
+    if (!pickDates('sync-from', 'sync-to')) return;
     const body = {
         from: document.getElementById('sync-from').value,
         to: document.getElementById('sync-to').value,
@@ -112,11 +113,7 @@ async function searchGrin() {
 }
 
 function initGrinDates() {
-    const to = new Date();
-    const from = new Date(to.getTime() - 45 * 86400000);
-    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);  // local date
-    document.getElementById('sync-to').value = iso(to);
-    document.getElementById('sync-from').value = iso(from);
+    // the Fetch GRIN dates start empty - the user picks them
 }
 
 
@@ -155,4 +152,18 @@ function openGrinWindow() {
         if (_grinWin) _grinWin.focus();
     } catch (e) { _grinWin = null; }
     if (!_grinWin) showToast('Allow pop-ups for this site to see the browser window (the live view is also on this page).', 'info', 7000);
+}
+
+
+// Fetch dates start empty: the user picks From and To every time (nothing is pre-filled).
+function pickDates(fromId, toId) {
+    const f = document.getElementById(fromId), t = document.getElementById(toId);
+    const from = f.value, to = t.value;
+    if (!from || !to) {
+        showToast('Pick the From date and the To date first', 'danger', 5000);
+        (from ? t : f).focus();
+        return null;
+    }
+    if (from > to) { showToast('From date is after To date', 'danger', 5000); f.focus(); return null; }
+    return { from, to };
 }

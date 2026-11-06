@@ -54,7 +54,7 @@ async function saveSettings() {
 
 async function sendTestMail() {
     const to = document.getElementById('mail-test-to').value.trim();
-    if (!to) { showToast('Type the address to send the test to', 'warn'); return; }
+    if (!to) { showToast('Type the address to send the test to', 'danger'); return; }
     const btn = document.getElementById('btn-mail-test'), box = document.getElementById('mail-test-log');
     btn.disabled = true; box.style.display = ''; box.textContent = 'Sending…';
     try {

@@ -2,13 +2,7 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
     initDropzone();
-    const today = new Date();
-    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    const back = new Date(today.getTime() - 45 * 86400000);
-    ['tally', 'grin', 'pay'].forEach(k => {
-        document.getElementById(`${k}-from`).value = iso(back);
-        document.getElementById(`${k}-to`).value = iso(today);
-    });
+    // Pull from Tally / Fetch GRIN / Fetch payments / notes: the dates start empty - the user picks them
     try { appState.grinSettings = (await api('/api/grin/settings')).settings; } catch (e) { /* shown later */ }
     loadStatus(0);
     api(`/api/grin/mails/plan`).then(p => { document.getElementById('mail-badge').textContent = p.drafts.length; }).catch(() => { });
@@ -26,4 +20,18 @@ function switchView(name) {
     else if (name === 'sources') loadSources();
     else if (name === 'buyers') loadBuyers();
     else if (name === 'settings') loadSettingsPage();
+}
+
+
+// Fetch dates start empty: the user picks From and To every time (nothing is pre-filled).
+function pickDates(fromId, toId) {
+    const f = document.getElementById(fromId), t = document.getElementById(toId);
+    const from = f.value, to = t.value;
+    if (!from || !to) {
+        showToast('Pick the From date and the To date first', 'danger', 5000);
+        (from ? t : f).focus();
+        return null;
+    }
+    if (from > to) { showToast('From date is after To date', 'danger', 5000); f.focus(); return null; }
+    return { from, to };
 }

@@ -187,13 +187,11 @@ async function runSalesCheck() {
 
 // Fetch GRIN = the hub's TAFE Channel fetch (Supplementary Bill > GRIN). On the website the SDEW PC does it.
 async function salesFetchGrin() {
+    const picked = pickDates('sales-grin-from', 'sales-grin-to');
+    if (!picked) return;
+    const { from, to } = picked;
     const btn = document.getElementById('btn-grin-fetch');
     btn.disabled = true;
-    const g = salesState.grin || {};
-    const to = new Date().toISOString().slice(0, 10);
-    const last = g.last ? new Date(`${g.last}T00:00:00`) : new Date();
-    last.setDate(last.getDate() - 45);
-    const from = last.toISOString().slice(0, 10);
     try {
         const r = await apiJson('/api/supp/grin/sync', 'POST', { from, to });
         showGrinLog(r);
@@ -271,4 +269,18 @@ async function saveSalesToFile() {
 
 function downloadSalesReport() {
     downloadFile('/api/pay/sales/export/report', document.getElementById('btn-sales-report'), 'Sales_GRN_Check.xlsx');
+}
+
+
+// Fetch dates start empty: the user picks From and To every time (nothing is pre-filled).
+function pickDates(fromId, toId) {
+    const f = document.getElementById(fromId), t = document.getElementById(toId);
+    const from = f.value, to = t.value;
+    if (!from || !to) {
+        showToast('Pick the From date and the To date first', 'danger', 5000);
+        (from ? t : f).focus();
+        return null;
+    }
+    if (from > to) { showToast('From date is after To date', 'danger', 5000); f.focus(); return null; }
+    return { from, to };
 }
