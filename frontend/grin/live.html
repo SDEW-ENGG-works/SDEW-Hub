@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TAFE Channel — live view</title>
+<link rel="icon" href="/assets/favicon.svg">
+<style>
+  :root { --bg:#0f172a; --panel:#111827; --text:#e2e8f0; --muted:#94a3b8; --ok:#22c55e; --run:#f59e0b; --bad:#ef4444; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 Inter, Segoe UI, Arial, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: .6rem; padding: .45rem .75rem; background: var(--panel); border-bottom: 1px solid #1f2937; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.run { background: var(--run); animation: pulse 1.2s infinite; } .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  #title { font-weight: 600; } #state { color: var(--muted); margin-left: auto; font-size: 12px; }
+  main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  main img { max-width: 100%; max-height: 100%; display: none; }
+  #wait { color: var(--muted); padding: 2rem; text-align: center; }
+  pre { margin: 0; height: 84px; overflow: auto; padding: .4rem .75rem; background: var(--panel); border-top: 1px solid #1f2937;
+        font: 11.5px/1.45 ui-monospace, Consolas, monospace; color: #cbd5e1; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header><span class="dot run" id="dot"></span><span id="title">TAFE Channel — GRIN fetch</span><span id="state">Starting…</span></header>
+<main><img id="shot" alt="TAFE Channel page"><div id="wait">Waiting for the browser to open…<br><small>The SDEW PC opens TAFE Channel and the picture appears here.</small></div></main>
+<pre id="log"></pre>
+<script>
+// Small window that shows the GRIN fetch the way LEAP does: a live picture of the TAFE Channel browser
+// (it runs on the SDEW PC - TAFE only accepts Indian addresses) plus the steps underneath.
+let shotUrl = null, busy = false, done = false, lastSeq = '';
+// the window opens before the fetch starts: ignore the previous fetch until this one shows up
+let first = null, sawRun = false, polls = 0;
+const $ = id => document.getElementById(id);
+
+async function tick() {
+    if (busy) return;
+    busy = true;
+    try {
+        const st = await (await fetch('/api/supp/grin/sync', { cache: 'no-store' })).json();
+        polls++;
+        if (first === null) first = st.started || '';
+        if (st.running) sawRun = true;
+        const ours = sawRun || (st.started || '') !== first;
+        if (!ours) {
+            $('state').textContent = polls > 25 ? 'The fetch did not start - close this window and press Fetch GRIN again' : 'Starting…';
+            return;
+        }
+        const log = st.log || [];
+        if (log.join('\n') !== lastSeq) {
+            lastSeq = log.join('\n');
+            $('log').textContent = lastSeq;
+            $('log').scrollTop = $('log').scrollHeight;
+        }
+        const r = await fetch('/api/supp/grin/shot?t=' + Date.now(), { cache: 'no-store' });
+        if (r.status === 200) {
+            const url = URL.createObjectURL(await r.blob());
+            $('shot').src = url;
+            if (shotUrl) URL.revokeObjectURL(shotUrl);
+            shotUrl = url;
+            $('shot').style.display = 'block';
+            $('wait').style.display = 'none';
+        }
+        if (st.running) {
+            $('dot').className = 'dot run';
+            $('state').textContent = 'Fetching… ' + new Date().toLocaleTimeString();
+        } else {
+            done = true;
+            $('dot').className = 'dot ' + (st.error ? 'bad' : 'ok');
+            $('state').textContent = st.error ? 'Stopped — see the steps below' : 'Done — you can close this window';
+            if (!shotUrl) $('wait').textContent = st.error ? 'Stopped before the browser opened.' :
+                'Finished. (No picture: the fetch ran without a browser - start the hub on the SDEW PC to watch it.)';
+        }
+    } catch (e) {
+        $('state').textContent = 'Connection lost - retrying…';
+    } finally {
+        busy = false;
+        if (!done) setTimeout(tick, 1200);
+    }
+}
+setTimeout(tick, 400);
+</script>
+</body>
+</html>

@@ -185,12 +185,17 @@ function pollTally() {
 }
 
 async function grinFetch() {
+    if (document.getElementById('grin-headed').checked) openGrinWindow();
     document.getElementById('btn-grin').disabled = true;
     showToast('Fetching GRIN from TAFE Channel…', 'info');
     try {
         const r = await apiJson('/api/supp/grin/sync', 'POST', {
             from: document.getElementById('grin-from').value, to: document.getElementById('grin-to').value,
             headed: document.getElementById('grin-headed').checked });
+        if (r.done && _grinWin && !_grinWin.closed) {      // the website fetched it itself: no browser to show
+            _grinWin.close();
+            showToast('Fetched without a browser - the SDEW PC hub is not running. Start it (start.bat) to watch the browser.', 'info', 9000);
+        }
         if (r.done) {           // website: the fetch already ran inside the request
             showGrin(Object.assign({ available: true }, r));
             showToast(r.error ? esc(r.error) : 'GRIN fetched', r.error ? 'danger' : 'success', 9000);
@@ -323,4 +328,20 @@ async function grinLiveShot() {
             box.style.display = '';
         }
     } catch (e) { /* next poll */ } finally { _grinShotBusy = false; }
+}
+
+
+// "Show the browser": a small window with the live view of the TAFE Channel browser (like LEAP).
+// Opened straight from the button press, otherwise the browser blocks it as a pop-up.
+let _grinWin = null;
+function openGrinWindow() {
+    const w = 760, h = 560;
+    const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || screen.width) - w - 30);
+    const top = Math.max(0, (window.screenY || 0) + 80);
+    try {
+        _grinWin = window.open('/grin/live.html', 'sdew-grin-live',
+            `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+        if (_grinWin) _grinWin.focus();
+    } catch (e) { _grinWin = null; }
+    if (!_grinWin) showToast('Allow pop-ups for this site to see the browser window (the live view is also on this page).', 'info', 7000);
 }
