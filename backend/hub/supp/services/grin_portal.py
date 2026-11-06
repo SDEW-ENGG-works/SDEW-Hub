@@ -8,6 +8,7 @@ Element ids were checked on the live portal on 10-Oct-2026.
 """
 import os
 import threading
+import time
 import traceback
 from datetime import date, datetime, timedelta
 
@@ -24,6 +25,41 @@ RESULTS = f'[id="{F}asyncTable"]'
 
 STATUS = dict(running=False, log=[], started="", finished="", error="")
 _lock = threading.Lock()
+# Live view (like LEAP): the newest screenshot of the TAFE page as JPEG. The GRIN page shows it to whoever
+# is looking - on the PC, or on the website when the PC does the fetch (pc_jobs copies it to grin_shots).
+SHOT = {"ts": 0.0, "jpg": None, "seq": 0}
+_PAGE = {"page": None, "thread": None}
+
+
+def _snap(force=False):
+    """Screenshot for the live view - only from the browser's own thread, at most one a second."""
+    page = _PAGE["page"]
+    if page is None or threading.current_thread() is not _PAGE["thread"]:
+        return
+    now = time.time()
+    if not force and now - SHOT["ts"] < 1.0:
+        return
+    try:
+        SHOT["jpg"] = page.screenshot(type="jpeg", quality=55)
+        SHOT["ts"] = now
+        SHOT["seq"] += 1
+    except Exception:  # noqa: BLE001 - page busy / navigating: next time
+        pass
+
+
+def _wait_visible(page, selector, timeout_ms):
+    """Like locator.wait_for(state='visible') but keeps the live view fresh while waiting."""
+    end = time.time() + timeout_ms / 1000.0
+    loc = page.locator(selector)
+    while time.time() < end:
+        try:
+            if loc.count() and loc.first.is_visible():
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        page.wait_for_timeout(700)
+        _snap()
+    return False
 
 
 def _log(msg):
@@ -63,13 +99,14 @@ def method():
     return "browser"
 
 
-def start(d1, d2, headed=False):
+def start(d1, d2, headed=False, window=None):
     """Starts the fetch. On Vercel it runs to the end inside this request (a function cannot keep a thread
     running after it answered) - STATUS then already holds the result."""
     with _lock:
         if STATUS["running"]:
             return False
         STATUS.update(running=True, log=[], started=datetime.now().isoformat(timespec="seconds"), finished="", error="")
+        SHOT.update(ts=0.0, jpg=None)
     # "Show the browser" ticked: always the real browser (so it opens on this PC's screen), even if
     # GRIN_FETCH=http is set - as long as Playwright is installed here
     use_browser = method() == "browser" or (headed and browser_available())
@@ -78,10 +115,13 @@ def start(d1, d2, headed=False):
         _log("The website cannot show a browser - start the hub on the SDEW PC (start.bat) to see it. Fetching without it"
              if config.ON_VERCEL else
              "The browser cannot be shown (Playwright is not installed on this computer) - fetching without it")
+    # window: open a real browser window on this computer. Default = headed. The website's jobs ask for
+    # the live view only (window=False): nobody is sitting at the PC then.
+    win = headed if window is None else window
     if config.ON_VERCEL:
-        target(d1, d2, headed)
+        target(d1, d2, win)
     else:
-        threading.Thread(target=target, args=(d1, d2, headed), daemon=True).start()
+        threading.Thread(target=target, args=(d1, d2, win), daemon=True).start()
     return True
 
 
@@ -130,20 +170,26 @@ def _run(d1, d2, headed):
         os.makedirs(out_dir, exist_ok=True)
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=not headed)
-            page = browser.new_context(accept_downloads=True).new_page()
+            page = browser.new_context(accept_downloads=True, viewport={"width": 1280, "height": 760}).new_page()
+            _PAGE.update(page=page, thread=threading.current_thread())
             try:
                 _log("Logging in to TAFE Channel")
                 page.goto(url + "/", wait_until="domcontentloaded")
+                _snap(True)
                 if page.locator("#wm_login-password").count():
                     page.fill("#wm_login-username", env["TAFE_USER"])
                     page.fill("#wm_login-password", env["TAFE_PASS"])
+                    _snap(True)
                     page.click("#submit_login")
                     page.wait_for_load_state("networkidle")
+                    _snap(True)
                     if page.locator("#wm_login-password").count():
                         raise RuntimeError("Login failed - check TAFE_USER / TAFE_PASS in .env")
                 for a, b in months(d1, d2):
+                    _log(f"{a:%d/%m/%Y} - {b:%d/%m/%Y}: opening GRIN Details")
                     page.goto(url + "/GRINDetails", wait_until="domcontentloaded")
                     page.wait_for_load_state("networkidle")
+                    _snap(True)
                     page.locator(FROM_DATE).wait_for(timeout=60_000)
                     page.select_option(COMPANY, value="TAFE")
                     page.wait_for_function(f"document.querySelector('{PLANT}').options.length > 1", timeout=60_000)
@@ -152,14 +198,14 @@ def _run(d1, d2, headed):
                         page.fill(sel, "")
                         page.type(sel, val)
                         page.keyboard.press("Tab")
+                    _snap(True)
                     page.click(FETCH)
-                    try:
-                        page.locator(EXPORT_XLS).wait_for(state="visible", timeout=180_000)
-                    except PWTimeout:
+                    if not _wait_visible(page, EXPORT_XLS, 180_000):
                         if page.locator(RESULTS).count() == 0:
                             _log(f"{a:%d/%m/%Y} - {b:%d/%m/%Y}: no GRIN rows")
                             continue
-                        raise
+                        raise PWTimeout("TAFE Channel did not show the Excel button within 3 minutes")
+                    _snap(True)
                     with page.expect_download(timeout=300_000) as dl:
                         page.click(EXPORT_XLS)
                     path = os.path.join(out_dir, f"GRIN_{a:%Y%m%d}_{b:%Y%m%d}_{datetime.now():%H%M%S}.xls")
@@ -175,6 +221,8 @@ def _run(d1, d2, headed):
                     pass
                 raise
             finally:
+                _snap(True)
+                _PAGE.update(page=None, thread=None)
                 browser.close()
         _log("Done")
     except Exception as e:

@@ -204,6 +204,10 @@
                 </div>
                 <p class="hint">Fetches one month at a time (TAFE allows 31 days per fetch). Last 45 days are fetched again so accepted / rejected qty filled in later by TAFE are picked up.</p>
                 <pre class="log-box" id="sync-log" style="display:none;"></pre>
+                <div id="sync-live-box" style="display:none;border:1px solid var(--border,#e2e8f0);border-radius:10px;overflow:hidden;margin-top:.6rem;background:#111">
+                    <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted,#64748b);padding:.35rem .7rem;background:var(--surface,#f7f7f8)"><span>TAFE Channel browser — live view</span><span id="sync-live-time"></span></div>
+                    <img id="sync-live" alt="TAFE Channel page" style="display:block;width:100%;height:auto">
+                </div>
             </div>
 
             <div class="card">

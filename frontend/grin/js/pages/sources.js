@@ -66,6 +66,7 @@ function showGrin(st) {
     else { b.className = 'status-badge active'; b.textContent = st.finished ? `Last fetch ${when(st.finished)}` : 'Ready'; }
     showLog('grin-log', st.log);
     document.getElementById('btn-grin').disabled = !!st.running;
+    if (st.running || st.finished) grinLiveShot();
 }
 
 // ---------- Pull from Tally ----------
@@ -300,4 +301,26 @@ async function payFetch() {
         showPay({ error: e.message, log: [`Stopped: ${e.message}`] });
         showToast(e.message, 'danger', 9000);
     }
+}
+
+
+// ---- live view of the TAFE Channel browser (like LEAP): shown while "Show the browser" is ticked,
+// for whoever opens this page - the PC hub, or the website when the SDEW PC does the fetch
+let _grinShotUrl = null, _grinShotBusy = false;
+async function grinLiveShot() {
+    const box = document.getElementById('grin-live-box');
+    if (!document.getElementById('grin-headed').checked) { box.style.display = 'none'; return; }
+    if (_grinShotBusy) return;
+    _grinShotBusy = true;
+    try {
+        const r = await fetch('/api/supp/grin/shot?t=' + Date.now(), { cache: 'no-store' });
+        if (r.status === 200) {
+            const url = URL.createObjectURL(await r.blob());
+            document.getElementById('grin-live').src = url;
+            if (_grinShotUrl) URL.revokeObjectURL(_grinShotUrl);
+            _grinShotUrl = url;
+            document.getElementById('grin-live-time').textContent = new Date().toLocaleTimeString();
+            box.style.display = '';
+        }
+    } catch (e) { /* next poll */ } finally { _grinShotBusy = false; }
 }

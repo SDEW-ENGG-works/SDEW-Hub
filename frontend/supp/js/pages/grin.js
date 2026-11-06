@@ -39,6 +39,7 @@ function showSyncStatus(st) {
         log.scrollTop = log.scrollHeight;
     }
     document.getElementById('btn-sync').disabled = !!st.running;
+    if (st.running) grinLiveShot();
 }
 
 async function startSync() {
@@ -111,4 +112,26 @@ function initGrinDates() {
     const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);  // local date
     document.getElementById('sync-to').value = iso(to);
     document.getElementById('sync-from').value = iso(from);
+}
+
+
+// ---- live view of the TAFE Channel browser (like LEAP): shown while "Show the browser" is ticked,
+// for whoever opens this page - the PC hub, or the website when the SDEW PC does the fetch
+let _grinShotUrl = null, _grinShotBusy = false;
+async function grinLiveShot() {
+    const box = document.getElementById('sync-live-box');
+    if (!document.getElementById('sync-headed').checked) { box.style.display = 'none'; return; }
+    if (_grinShotBusy) return;
+    _grinShotBusy = true;
+    try {
+        const r = await fetch('/api/supp/grin/shot?t=' + Date.now(), { cache: 'no-store' });
+        if (r.status === 200) {
+            const url = URL.createObjectURL(await r.blob());
+            document.getElementById('sync-live').src = url;
+            if (_grinShotUrl) URL.revokeObjectURL(_grinShotUrl);
+            _grinShotUrl = url;
+            document.getElementById('sync-live-time').textContent = new Date().toLocaleTimeString();
+            box.style.display = '';
+        }
+    } catch (e) { /* next poll */ } finally { _grinShotBusy = false; }
 }

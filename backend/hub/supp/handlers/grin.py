@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from ..db import rows
-from ..http import ApiError, route
+from ..http import ApiError, Response, route
 from ... import config
 from ...services import pc_jobs
 from ..services import grin_portal
@@ -58,3 +58,15 @@ def sync_status(req):
     if config.ON_VERCEL:
         return pc_jobs.status("grin_fetch")
     return grin_portal.STATUS
+
+
+@route("GET", r"/api/grin/shot")
+def shot(req):
+    """Live view: the newest screenshot of the TAFE Channel page (204 when there is none)."""
+    if config.ON_VERCEL:
+        jpg = pc_jobs.latest_shot("grin_fetch")
+    else:
+        jpg = grin_portal.SHOT.get("jpg")
+    if not jpg:
+        return Response(b"", status=204)
+    return Response(jpg, content_type="image/jpeg", headers={"Cache-Control": "no-store"})

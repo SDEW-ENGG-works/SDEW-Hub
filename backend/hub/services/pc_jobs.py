@@ -84,6 +84,43 @@ def status(kind):
                 error=err, result=json.loads(j["result"]) if j["result"] else None, job_id=j["id"], job=j["status"])
 
 
+# ------------------------------------------------------------------ live view (screenshots of the PC's browser)
+SHOT_SQL = "CREATE TABLE IF NOT EXISTS pc_shots(kind TEXT PRIMARY KEY, ts REAL, jpg BLOB)"
+
+
+def push_shot(kind, jpg):
+    """Newest screenshot of a job's browser -> pc_shots (one row per kind), for the website's live view."""
+    try:
+        con = get_db()
+        con.execute(SHOT_SQL)
+        con.execute("INSERT INTO pc_shots(kind, ts, jpg) VALUES(?,?,?) ON CONFLICT(kind) DO UPDATE SET "
+                    "ts=excluded.ts, jpg=excluded.jpg", (kind, time.time(), jpg))
+        con.commit()
+    except Exception:  # noqa: BLE001 - the live view must never stop the job
+        pass
+
+
+def latest_shot(kind):
+    """The newest screenshot of the newest job of this kind (None when the job has none yet)."""
+    j = latest(kind)
+    if not j:
+        return None
+    try:
+        get_db().execute(SHOT_SQL)
+        r = one("SELECT ts, jpg FROM pc_shots WHERE kind=?", (kind,))
+    except Exception:  # noqa: BLE001
+        return None
+    if not r or not r["jpg"] or float(r["ts"] or 0) < float(j["updated_ts"] or 0) - 3600:
+        return None
+    started = j["created_at"] or ""
+    try:
+        if r["ts"] < datetime.fromisoformat(started).timestamp() - 5:
+            return None                                  # a picture of an older job
+    except ValueError:
+        pass
+    return bytes(r["jpg"])
+
+
 # ------------------------------------------------------------------ PC side
 def start_agent():
     """Called once by start.bat's server. Only on the PC, and only when it shares the primary cloud database."""
@@ -133,17 +170,24 @@ def _run(job):
         mod, started = tally, tally.start(s["tally_url"], s["tally_companies"], d1, d2, {x["party"] for x in plants()})
     else:
         from ..supp.services import grin_portal
-        mod, started = grin_portal, grin_portal.start(d1, d2, headed=bool(p.get("headed")))
+        # "Show the browser" on the website: the PC runs the real browser (hidden - nobody sits at the PC)
+        # and every screenshot goes to grin_shots for the live view on the website
+        mod, started = grin_portal, grin_portal.start(d1, d2, headed=bool(p.get("headed")), window=False)
     if not started:
         _push(job["id"], dict(log=["Already running on the PC - wait and press again"], error="busy"), final=True)
         return
     last = None
+    shot_seq = -1
     while True:
         st = dict(mod.STATUS)
         text = json.dumps(st.get("log"))
         if text != last:
             _push(job["id"], st)
             last = text
+        shot = getattr(mod, "SHOT", None)
+        if shot and shot.get("jpg") and shot.get("seq") != shot_seq:
+            shot_seq = shot.get("seq")
+            push_shot(job["kind"], shot["jpg"])
         if not st.get("running"):
             break
         time.sleep(1.5)
