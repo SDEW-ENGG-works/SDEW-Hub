@@ -76,7 +76,41 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ------------------------------------------------------------------ Today
+// TAFE outstanding (from GRIN & Payments: TAFE Channel Account Balance-Outstanding, fetched every morning)
+async function loadHubBal() {
+    const el = document.getElementById('hub-bal');
+    const mine = (window.HUB_USER && window.HUB_USER.access) || ['grin'];
+    if (!el || !mine.includes('grin')) return;
+    let d;
+    try { d = await api('/api/grin/balance'); } catch (e) { el.innerHTML = ''; return; }
+    const L = n => { const v = Math.abs(parseFloat(n) || 0); return (n < 0 ? '− ' : '') + (v >= 1e7 ? `₹${(v / 1e7).toFixed(2)} Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2)} L` : `₹${inr(v, 0)}`); };
+    const day = iso => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
+    if (!d.run) {
+        el.innerHTML = `<div class="card hub-bal"><div class="card-header-flex"><div class="card-title">TAFE outstanding</div>
+            <a class="btn btn-outline btn-sm" href="/grin/">Fetch on GRIN &amp; Payments</a></div>
+            <p class="hint">Not fetched from TAFE Channel yet.</p></div>`;
+        return;
+    }
+    const tw = d.this_week, prev = d.prev, delta = prev ? d.owed - prev.owed : null;
+    el.innerHTML = `<div class="card hub-bal">
+        <div class="card-header-flex"><div class="card-title">TAFE outstanding <span class="hint no-margin">· week ${day(d.week_from)} – ${day(d.week_to)}</span></div>
+            <span class="hint no-margin">TAFE Channel read ${esc(when(d.run.fetched_at))} · <a href="/grin/">details on GRIN &amp; Payments ›</a></span></div>
+        <div class="hub-bal-cards">
+            <div class="main"><small>TAFE owes you (their books)</small><b>${L(d.owed)}</b>
+                <span>${inr(d.run.lines, 0)} documents${delta !== null && Math.abs(delta) >= 1 ? ` · ${delta > 0 ? '▲' : '▼'} ${L(Math.abs(delta))} since ${day(prev.fetch_date)}` : ''}</span></div>
+            <div><small>Expected this week</small><b>${L(tw.value)}</b>
+                <span>${inr(tw.n, 0)} invoice(s) by ${day(d.week_to)}${tw.late ? ` · <em class="neg">${L(tw.late)} overdue</em>` : ''}</span></div>
+            <div><small>Received this week</small><b>${L(d.received.value || d.cleared.value)}</b>
+                <span>${d.received.n ? `${inr(d.received.n, 0)} invoice(s) paid` : d.cleared.n ? `${inr(d.cleared.n, 0)} left TAFE's list` : 'nothing yet'}</span></div>
+            <div><small>Not in TAFE's books yet</small><b>${L(d.not_booked.value + d.not_grined.value)}</b>
+                <span>GRINed ${L(d.not_booked.value)} · not GRINed ${L(d.not_grined.value)}</span></div>
+            <div class="total"><small>Total still to receive</small><b>${L(d.total_due)}</b>
+                <span>after this week ${L(d.total_due - tw.value)}</span></div>
+        </div></div>`;
+}
+
 async function loadToday(quiet) {
+    if (!quiet) loadHubBal();
     let d;
     try { d = await api('/api/hub/overview'); } catch (e) { showToast(`Could not load: ${e.message}`, 'danger'); return; }
     window.hubBadges && window.hubBadges(d);

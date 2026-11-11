@@ -68,7 +68,9 @@ def data_dates():
     p1 = (rows("SELECT MAX(period_to) d FROM gp_pay_files WHERE kind='Payments'") or [{}])[0].get("d") or ""
     p2 = (rows("SELECT MAX(pv_date) d FROM gp_pay_lines") or [{}])[0].get("d") or ""
     p3 = (rows("SELECT MAX(pv_date) d FROM gp_register WHERE pv<>''") or [{}])[0].get("d") or ""
-    return dict(grin_until=g.get("d") or "", grin_from=g.get("f") or "", pay_until=max(p1, p2, p3))
+    from ...supp.services import grin_portal
+    return dict(grin_until=grin_portal.covered_until(g.get("d")) or "", grin_from=g.get("f") or "",
+                pay_until=max(p1, p2, p3))
 
 
 def build(as_of=None):

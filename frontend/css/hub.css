@@ -228,3 +228,29 @@ input[type="password"] {
     padding: 0.55rem 0.75rem; color: var(--text); font-family: var(--font); font-size: 0.87rem;
 }
 .hub-db:empty { display: none; }
+
+/* ---------- TAFE outstanding: home-screen strip + Today card (from GRIN & Payments) ---------- */
+.hub-home-bal { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.4rem 1.6rem; max-width: 640px;
+    margin: -1rem auto 1.8rem; padding: 0.7rem 1rem; border-radius: 14px; background: #fff; border: 1px solid var(--line);
+    box-shadow: var(--shadow-card); text-decoration: none; color: var(--ink); }
+.hub-home-bal span { display: flex; flex-direction: column; align-items: center; }
+.hub-home-bal small { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
+.hub-home-bal b { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.hub-home-bal span:first-child b { color: #1c7a4a; }
+.hub-home-bal em { font-style: normal; font-size: 0.7rem; color: var(--dim); width: 100%; text-align: center; }
+.hub-home-bal:hover { border-color: var(--accent); }
+.hub-bal { margin-bottom: 1rem; }
+.hub-bal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.7rem; margin-top: 0.4rem; }
+.hub-bal-cards > div { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.65rem 0.8rem; display: flex; flex-direction: column; gap: 0.1rem; }
+.hub-bal-cards small { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
+.hub-bal-cards b { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.hub-bal-cards span { font-size: 0.72rem; color: var(--muted); }
+.hub-bal-cards em { font-style: normal; }
+.hub-bal-cards .main { background: linear-gradient(135deg, #14532d 0%, #1c7a4a 100%); border-color: #1c7a4a; }
+.hub-bal-cards .main small, .hub-bal-cards .main span { color: rgba(255, 255, 255, 0.85); }
+.hub-bal-cards .main b { color: #fff; }
+.hub-bal-cards .total { border-color: var(--accent); background: var(--accent-soft); }
+.neg { color: var(--danger) !important; }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+@media (max-width: 1100px) { .hub-bal-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hub-bal-cards .main { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .hub-bal-cards { grid-template-columns: 1fr; } }

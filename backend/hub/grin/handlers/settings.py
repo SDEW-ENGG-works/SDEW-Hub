@@ -41,6 +41,8 @@ def put_settings(req):
         raise ApiError("Test address looks wrong")
     if "track_plants_without_grin" in b:
         s["track_plants_without_grin"] = bool(b["track_plants_without_grin"])
+    if "tally_all_vouchers" in b:
+        s["tally_all_vouchers"] = bool(b["tally_all_vouchers"])
     if "ignore_doc_types" in b:
         s["ignore_doc_types"] = [t.strip().upper() for t in b["ignore_doc_types"] if t and t.strip()]
     if "tally_companies" in b:

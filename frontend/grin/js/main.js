@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Pull from Tally / Fetch GRIN / Fetch payments / notes: the dates start empty - the user picks them
     try { appState.grinSettings = (await api('/api/grin/settings')).settings; } catch (e) { /* shown later */ }
     loadStatus(0);
+    loadBalance();
     api(`/api/grin/mails/plan`).then(p => { document.getElementById('mail-badge').textContent = p.drafts.length; }).catch(() => { });
 });
 

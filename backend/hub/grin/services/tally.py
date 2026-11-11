@@ -20,6 +20,7 @@ import traceback
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from ... import config
 from ...supp.services.norm import part_key
@@ -44,7 +45,19 @@ def _company_var(company):
     return f"<SVCURRENTCOMPANY>{html.escape(company)}</SVCURRENTCOMPANY>" if company else ""
 
 
-def collection_request(company, d1, d2):
+def all_vouchers():
+    """Setting 'Pull every voucher type' (on unless turned off): receipts, payments, journals ... come too,
+    so Ore can keep and compare the whole books. TAFE sales invoices are picked out of them as before."""
+    try:
+        from .defaults import load_settings
+        return bool(load_settings().get("tally_all_vouchers", True))
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def collection_request(company, d1, d2, all_types=None):
+    all_types = all_vouchers() if all_types is None else all_types
+    filt = "" if all_types else "\n    <FILTER>SDEWHubIsSales</FILTER>"
     return f"""<ENVELOPE>
  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>SDEWHubSales</ID></HEADER>
  <BODY><DESC>
@@ -56,8 +69,8 @@ def collection_request(company, d1, d2):
    <COLLECTION NAME="SDEWHubSales" ISMODIFY="No">
     <TYPE>Voucher</TYPE>
     <FETCH>Date, VoucherNumber, VoucherTypeName, PartyLedgerName, Reference, IsCancelled, IsOptional</FETCH>
-    <FETCH>AllInventoryEntries.*, LedgerEntries.*, AllLedgerEntries.*, InvoiceOrderList.*</FETCH>
-    <FILTER>SDEWHubIsSales</FILTER>
+    <FETCH>GUID, Narration</FETCH>
+    <FETCH>AllInventoryEntries.*, LedgerEntries.*, AllLedgerEntries.*, InvoiceOrderList.*</FETCH>{filt}
    </COLLECTION>
    <SYSTEM TYPE="Formulae" NAME="SDEWHubIsSales">$$IsSales:$VoucherTypeName</SYSTEM>
   </TDLMESSAGE></TDL>
@@ -227,6 +240,101 @@ def parse_vouchers(text):
     return out
 
 
+# ----------------------------------------------------------------------------- every voucher, with its ledger lines
+def _money(text):
+    """Tally amount text -> exact Decimal (2 places). Tally writes debit negative."""
+    m = re.match(r"^\s*(-?[\d,]*\.?\d+)", text or "")
+    if not m:
+        return Decimal("0.00")
+    try:
+        return Decimal(m.group(1).replace(",", "")).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return Decimal("0.00")
+
+
+def _entries(v):
+    """Ledger entries of a voucher. ALLLEDGERENTRIES, when Tally sends it, already holds every ledger, the sales or
+    purchase ledger of the item lines included. Otherwise: LEDGERENTRIES plus the accounting allocations inside
+    every item line. Never both, or amounts count twice."""
+    every = _children(v, "ALLLEDGERENTRIES")
+    if every:
+        return every
+    out = list(_children(v, "LEDGERENTRIES"))
+    for item in _children(v, "ALLINVENTORYENTRIES") + _children(v, "INVENTORYENTRIES"):
+        out += _children(item, "ACCOUNTINGALLOCATIONS")
+    return out
+
+
+def parse_full(text):
+    """Tally XML -> every voucher: dict(guid, vtype, vno, vdate, party, reference, narration, cancelled, optional,
+    lines=[(ledger, amount)] with amount a Decimal, debit positive)."""
+    root = ET.fromstring(clean_xml(text))
+    out = []
+    for v in root.iter("VOUCHER"):
+        vdate = _date(_t(v, "DATE"))
+        if not vdate:
+            continue
+        sums, order = {}, []
+        for e in _entries(v):
+            name = _t(e, "LEDGERNAME")
+            if not name:
+                continue
+            if name not in sums:
+                sums[name] = Decimal("0.00")
+                order.append(name)
+            sums[name] -= _money(_t(e, "AMOUNT"))
+        lines = [(n, sums[n]) for n in order if sums[n] != 0]
+        out.append(dict(guid=_t(v, "GUID"), vtype=v.get("VCHTYPE") or _t(v, "VOUCHERTYPENAME"),
+                        vno=_t(v, "VOUCHERNUMBER"), vdate=vdate, party=_t(v, "PARTYLEDGERNAME"),
+                        reference=_t(v, "REFERENCE"), narration=_t(v, "NARRATION")[:500],
+                        cancelled=1 if _t(v, "ISCANCELLED").lower() == "yes" or _t(v, "ISDELETED").lower() == "yes" else 0,
+                        optional=1 if _t(v, "ISOPTIONAL").lower() == "yes" else 0, lines=lines))
+    return out
+
+
+def voucher_key(company, v):
+    if v["guid"]:
+        return f"{company}|{v['guid']}"
+    return f"{company}|{v['vtype']}|{v['vno']}|{v['vdate']}"
+
+
+def store_full(vouchers, company):
+    """Every voucher and its ledger lines, replaced on every pull (a voucher altered in Tally is read again)."""
+    from ..db import get_db
+    if not vouchers:
+        return 0
+    con = get_db()
+    now = datetime.now().isoformat(timespec="seconds")
+    for v in vouchers:
+        key = voucher_key(company, v)
+        total = sum((a for _, a in v["lines"] if a > 0), Decimal("0.00"))
+        con.execute("INSERT INTO gp_tally_vouchers(vkey, company, guid, vtype, vno, vdate, party, reference, narration, "
+                    "cancelled, optional, total, pulled_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(vkey) DO UPDATE "
+                    "SET company=excluded.company, guid=excluded.guid, vtype=excluded.vtype, vno=excluded.vno, "
+                    "vdate=excluded.vdate, party=excluded.party, reference=excluded.reference, "
+                    "narration=excluded.narration, cancelled=excluded.cancelled, optional=excluded.optional, "
+                    "total=excluded.total, pulled_at=excluded.pulled_at",
+                    (key, company, v["guid"], v["vtype"], v["vno"], v["vdate"], v["party"], v["reference"],
+                     v["narration"], v["cancelled"], v["optional"], str(total), now))
+        con.execute("DELETE FROM gp_tally_vlines WHERE vkey=?", (key,))
+        for seq, (ledger, amount) in enumerate(v["lines"]):
+            con.execute("INSERT INTO gp_tally_vlines(vkey, seq, ledger, amount) VALUES(?,?,?,?)",
+                        (key, seq, ledger, str(amount)))
+    con.commit()
+    return len(vouchers)
+
+
+def keep_full(text, company, a, b):
+    """Store every voucher dated a..b in a Tally answer. Never stops the TAFE invoice pull if it fails."""
+    try:
+        vs = [x for x in parse_full(text) if a.isoformat() <= x["vdate"] <= b.isoformat()]
+        n = store_full(vs, company)
+        return n
+    except Exception as e:  # noqa: BLE001
+        _log(f"Could not keep the full vouchers ({e}); the TAFE invoices are still read")
+        return 0
+
+
 def is_sales(inv, parties):
     """Sales voucher of a TAFE party. Day Book also returns receipts, journals ... (no stock lines)."""
     t = (inv.get("vtype") or "").lower()
@@ -285,6 +393,9 @@ def pull_company(url, company, d1, d2, parties):
             vs = [x for x in parse_vouchers(text) if x["inv_date"] and a.isoformat() <= x["inv_date"] <= b.isoformat()]
             if (vs and any(x["lines"] or x["amount"] for x in vs)) or mode == "day book":
                 got, how = vs, mode
+                full = keep_full(text, company, a, b)
+                if full:
+                    _log(f"{company or 'open company'} {a:%b-%Y}: {full} vouchers kept with their ledger lines")
                 break
         sales = [x for x in (got or []) if is_sales(x, parties)]
         kept += sales
@@ -332,8 +443,10 @@ def _run(url, companies, d1, d2, parties):
 # ----------------------------------------------------------------------------- the website's pull (browser + bridge)
 # On the website the BROWSER asks Tally, through tools/tally_bridge.py on the computer it runs on, so every
 # computer pulls its own Tally. The server only builds the requests and reads the answers.
-def chunks(d1, d2, days=7):
-    """Week-sized pieces: a week's Tally answer stays well below Vercel's 4.5 MB request limit."""
+def chunks(d1, d2, days=None):
+    """Week-sized pieces: a week's Tally answer stays well below Vercel's 4.5 MB request limit. With every
+    voucher type the pieces are 3 days, as receipts, payments and journals come too."""
+    days = days or (3 if all_vouchers() else 7)
     d = d1
     while d <= d2:
         e = min(d2, d + timedelta(days=days - 1))
@@ -362,4 +475,5 @@ def ingest_text(text, company, a, b, parties, mode):
         return dict(ok=True, usable=False, vouchers=len(vs), invoices=0)
     sales = [x for x in vs if is_sales(x, parties)]
     store(sales, company)
-    return dict(ok=True, usable=True, vouchers=len(vs), invoices=len(sales))
+    full = keep_full(text, company, a, b)
+    return dict(ok=True, usable=True, vouchers=len(vs), invoices=len(sales), kept=full)

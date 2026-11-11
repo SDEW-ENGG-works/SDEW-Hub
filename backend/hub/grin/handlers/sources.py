@@ -41,9 +41,7 @@ def sources(req):
                    on_pc=config.ON_VERCEL, agent=pc_jobs.agent_info()),
         sales=_one(f"SELECT COUNT(DISTINCT voucher) n, MIN(inv_date) first, MAX(inv_date) last FROM sales_lines "
                    f"WHERE party IN ({ph})", parties),
-        grin=dict(**_one("SELECT COUNT(DISTINCT grin_no) n, COUNT(DISTINCT invoice_no) invoices, MIN(grin_date) first, "
-                         "MAX(grin_date) last, MAX(updated_at) updated FROM grin_lines"),
-                  portal=_grin_portal(grin_portal)),
+        grin=_grin_summary(grin_portal),
         payments=_one("SELECT COUNT(*) n, COUNT(DISTINCT pv) vouchers, MIN(pv_date) first, MAX(pv_date) last "
                       "FROM gp_pay_lines"),
         register=_one("SELECT COUNT(*) n, SUM(pv<>'') marked, MAX(inv_date) last, MAX(file) file, MAX(loaded_at) loaded "
@@ -51,6 +49,16 @@ def sources(req):
         files=rows("SELECT * FROM gp_pay_files ORDER BY id DESC LIMIT 50"),
         smtp=dict(ready=smtp_settings()["ready"], host=smtp_settings()["host"], sender=smtp_settings()["sender"]),
         dates=st.data_dates())
+
+
+def _grin_summary(grin_portal):
+    g = _one("SELECT COUNT(DISTINCT grin_no) n, COUNT(DISTINCT invoice_no) invoices, MIN(grin_date) first, "
+             "MAX(grin_date) last, MAX(updated_at) updated FROM grin_lines")
+    g["last_grin"] = g.get("last")
+    g["last"] = grin_portal.covered_until(g.get("last"))          # checked up to (a fetch with no GRIN counts)
+    g["updated"] = grin_portal.last_fetched(g.get("updated"))     # the last fetch, even when nothing was new
+    g["portal"] = _grin_portal(grin_portal)
+    return g
 
 
 def _grin_portal(grin_portal):

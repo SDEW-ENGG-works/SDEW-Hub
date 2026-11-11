@@ -50,6 +50,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.6" y2="16.6"></line></svg>
             <input type="search" id="hub-search-input" placeholder="Search invoice, part, PO, DR, GRIN…" aria-label="Search the hub">
         </form>` : ''}
+        ${can('grin') ? `<a class="hub-home-bal" id="hub-home-bal" href="/grin/" style="display:none"></a>` : ''}
         <nav class="hub-apps" aria-label="Apps">
             ${APPS.map(a => `<a class="hub-app" href="${a[1]}" data-mod="${a[0]}">
                 <span class="hub-app-ic" style="--c:${a[3]}">${a[4]}</span>
@@ -110,6 +111,7 @@
         });
         fetch('/api/auth').then(r => r.json()).then(a => { authInfo = a; showOut(); }).catch(() => { });
         if (here === 'hub' && can('today')) hubBadges();
+        if (here === 'hub' && can('grin')) hubHomeBal();
         // module pages: open the tab named in the address (/supp/#pos) and keep the address in step
         if (here !== 'hub' && typeof window.switchView === 'function') {
             const orig = window.switchView;
@@ -144,6 +146,20 @@
             if (o) apply({ db_mode: o.db_mode, checks: o.checks, open_items: o.open_items });
         }).catch(() => { });
     };
+
+    // home screen: one line of what TAFE owes (GRIN & Payments > TAFE outstanding, fetched daily from TAFE Channel)
+    function hubHomeBal() {
+        const L = n => { const v = Math.abs(parseFloat(n) || 0); return (n < 0 ? '− ' : '') + (v >= 1e7 ? `₹${(v / 1e7).toFixed(2)} Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2)} L` : `₹${Math.round(v).toLocaleString('en-IN')}`); };
+        fetch('/api/grin/balance').then(r => r.ok ? r.json() : null).then(d => {
+            const el = document.getElementById('hub-home-bal');
+            if (!d || !el || !d.run) return;
+            el.innerHTML = `<span><small>TAFE owes you</small><b>${L(d.owed)}</b></span>
+                <span><small>Expected this week</small><b>${L(d.this_week.value)}</b></span>
+                <span><small>Total still to receive</small><b>${L(d.total_due)}</b></span>
+                <em>TAFE Channel ${esc(new Date(d.run.fetched_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))} ›</em>`;
+            el.style.display = '';
+        }).catch(() => { });
+    }
 
     window.hubLogout = async function () {
         try { await fetch('/api/logout', { method: 'POST' }); } catch (e) { /* ignore */ }

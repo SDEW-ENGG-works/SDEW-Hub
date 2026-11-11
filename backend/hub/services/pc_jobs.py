@@ -23,7 +23,7 @@ POLL = 4
 BEAT = 20
 ONLINE = 75       # PC counts as online if it said so within this many seconds
 STALE = 180       # a queued/running job not touched for this long -> given up
-KINDS = ("tally_pull", "grin_fetch", "dqms_report", "pay_fetch", "notes_fetch", "backup", "restore")
+KINDS = ("tally_pull", "grin_fetch", "dqms_report", "pay_fetch", "notes_fetch", "balance_fetch", "backup", "restore")
 _on = False
 
 
@@ -148,6 +148,11 @@ def _run(job):
         from ..dqms.services import dqms_portal
         mod, started = dqms_portal, dqms_portal.start()
         _push(job["id"], dict(mod.STATUS), final=True)
+        return
+    if job["kind"] == "balance_fetch":
+        from ..grin.services import balance_portal
+        balance_portal.run("website (on the PC)")
+        _push(job["id"], dict(balance_portal.STATUS), final=True)
         return
     if job["kind"] in ("backup", "restore"):
         from . import backup

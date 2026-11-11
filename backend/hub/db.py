@@ -105,6 +105,14 @@ CREATE TABLE IF NOT EXISTS gp_tally_invoices(
 CREATE TABLE IF NOT EXISTS gp_tally_lines(
     inv_key TEXT, seq INTEGER, part TEXT, item_name TEXT, qty REAL, rate REAL, amount REAL, order_no TEXT,
     PRIMARY KEY(inv_key, seq));
+-- Every Tally voucher with its ledger lines (all voucher types), for Ore's books and the compare with Tally.
+-- Amounts are kept as the exact text from Tally, debit positive (Tally itself writes debit negative).
+CREATE TABLE IF NOT EXISTS gp_tally_vouchers(
+    vkey TEXT PRIMARY KEY, company TEXT, guid TEXT, vtype TEXT, vno TEXT, vdate TEXT, party TEXT, reference TEXT,
+    narration TEXT, cancelled INTEGER DEFAULT 0, optional INTEGER DEFAULT 0, total TEXT, pulled_at TEXT);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_vouchers_date ON gp_tally_vouchers(company, vdate);
+CREATE TABLE IF NOT EXISTS gp_tally_vlines(
+    vkey TEXT, seq INTEGER, ledger TEXT, amount TEXT, PRIMARY KEY(vkey, seq));
 CREATE TABLE IF NOT EXISTS gp_register(
     inv_key TEXT PRIMARY KEY, inv_no TEXT, inv_date TEXT, amount REAL, party TEXT, pv TEXT, pv_date TEXT,
     cancelled INTEGER DEFAULT 0, file TEXT, loaded_at TEXT);
@@ -123,6 +131,12 @@ CREATE TABLE IF NOT EXISTS gp_mails(
 CREATE TABLE IF NOT EXISTS gp_mail_invoices(
     mail_id INTEGER, inv_key TEXT, sent_at TEXT, PRIMARY KEY(mail_id, inv_key));
 CREATE INDEX IF NOT EXISTS ix_gp_mail_inv ON gp_mail_invoices(inv_key);
+CREATE TABLE IF NOT EXISTS gp_bal_runs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, fetched_at TEXT, fetch_date TEXT, source TEXT, owed REAL, credit REAL,
+    debit REAL, general REAL, net REAL, balances TEXT, lines INTEGER);
+CREATE TABLE IF NOT EXISTS gp_bal_lines(
+    run_id INTEGER, seq INTEGER, doc_no TEXT, line TEXT, doc_date TEXT, doc_type TEXT, grin_date TEXT, ref TEXT,
+    inv_key TEXT, debit REAL, credit REAL, narration TEXT, PRIMARY KEY(run_id, seq));
 CREATE TABLE IF NOT EXISTS gp_dc_docs(
     doc_no TEXT, doc_type TEXT, doc_date TEXT, grin_date TEXT, label TEXT, debit REAL, credit REAL, plant TEXT,
     reason TEXT, rid TEXT, detail_status TEXT, error TEXT, note_total REAL, note_reason TEXT, note_text TEXT,

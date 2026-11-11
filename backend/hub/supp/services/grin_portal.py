@@ -68,6 +68,39 @@ def _log(msg):
     print("[GRIN sync]", msg)
 
 
+def record_fetch(d1, d2):
+    """A fetch that finished without error: remember when, and that TAFE Channel was checked up to d2 -
+    so 'GRIN dates ... to' and 'Last fetched' move on even when the period had no new GRIN."""
+    from ...db import get_setting, set_setting
+    try:
+        old = get_setting("grin.fetched") or {}
+        to = min(d2, date.today()).isoformat()
+        set_setting("grin.fetched", dict(at=datetime.now().isoformat(timespec="seconds"), first=d1.isoformat(), to=to,
+                                         checked_to=max(to, old.get("checked_to") or "")))
+        from ...grin.services import status as gst
+        gst.invalidate()                       # the GRIN status uses "checked up to" - work it out again
+    except Exception:  # noqa: BLE001 - never fail the fetch for this
+        traceback.print_exc()
+
+
+def fetched():
+    """{'at': last successful fetch, 'checked_to': TAFE Channel checked up to this date} (empty before the first)."""
+    from ...db import get_setting
+    try:
+        return get_setting("grin.fetched") or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def covered_until(last_grin_date):
+    """GRIN data is complete up to: the newest GRIN date, or later when a fetch checked further and found none."""
+    return max(last_grin_date or "", fetched().get("checked_to") or "") or None
+
+
+def last_fetched(updated_at):
+    return max(updated_at or "", fetched().get("at") or "") or None
+
+
 def months(start, end):
     d = start
     while d <= end:
@@ -144,6 +177,7 @@ def _run_http(d1, d2, headed=False):
                 fh.write(data)
             res = ingest_grin_file(path, os.path.basename(path), source="Portal")
             _log(f"{a:%d/%m/%Y} - {b:%d/%m/%Y}: {res['lines']} lines ({res['added']} new)")
+        record_fetch(d1, d2)
         _log("Done")
     except PortalError as e:
         STATUS["error"] = str(e)
@@ -224,6 +258,7 @@ def _run(d1, d2, headed):
                 _snap(True)
                 _PAGE.update(page=None, thread=None)
                 browser.close()
+        record_fetch(d1, d2)
         _log("Done")
     except Exception as e:
         traceback.print_exc()

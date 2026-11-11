@@ -26,6 +26,10 @@ def bootstrap(req):
         f["info"] = json.loads(f["info"] or "{}")
     g = one("SELECT COUNT(*) n, COUNT(DISTINCT grin_no) grins, MIN(grin_date) first, MAX(grin_date) last, "
             "MAX(updated_at) updated FROM grin_lines")
+    if g:
+        from ...supp.services import grin_portal
+        g["last"] = grin_portal.covered_until(g.get("last"))
+        g["updated"] = grin_portal.last_fetched(g.get("updated"))
     rid = latest_sales_run()
     return dict(file=f, grin=g, run=sales_summary(rid) if rid else None)
 

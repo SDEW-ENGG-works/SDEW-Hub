@@ -174,6 +174,11 @@ def run_server(port=None):
         start_nightly()
     except Exception as e:  # noqa: BLE001
         print("[Backup] nightly backup not started:", e)
+    try:  # TAFE outstanding (Account Balance-Outstanding) once a day
+        from .grin.services.balance_portal import start_daily
+        start_daily()
+    except Exception as e:  # noqa: BLE001
+        print("[TAFE balance] daily fetch not started:", e)
     try:  # CHEP: jobs sent from the website reach this PC through the shared cloud database
         from .chep.services.leap_remote import start_agent
         start_agent()

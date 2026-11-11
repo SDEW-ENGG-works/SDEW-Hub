@@ -22,6 +22,10 @@
     {
       "path": "/api/cron/backup",
       "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/api/cron/tafe-balance",
+      "schedule": "45 3 * * *"
     }
   ]
 }

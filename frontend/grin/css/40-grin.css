@@ -154,3 +154,25 @@ code.env { display: block; white-space: pre; background: var(--card-alt); border
 .mr-tcol span { font-size: 0.7rem; color: var(--muted); }
 @media (max-width: 1100px) { .mr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mr-grid2, .mr-hero { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .mr-cards { grid-template-columns: 1fr; } .mr-net .v { font-size: 1.8rem; } }
+
+/* ---------- TAFE outstanding (Status page) ---------- */
+.bal-card { margin-bottom: 1rem; padding: 0.9rem 1rem; }
+.bal-head { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.7rem; font-size: 0.95rem; }
+.bal-head-r { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.75rem; }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+.bal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.7rem; }
+.bal-c { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.7rem 0.85rem; background: var(--card); }
+.bal-c .k { font-size: 0.7rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.bal-c .v { font-size: 1.45rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.35; }
+.bal-c .s { font-size: 0.72rem; color: var(--muted); line-height: 1.4; }
+.bal-c.main { background: linear-gradient(135deg, #14532d 0%, #1c7a4a 100%); border-color: #1c7a4a; }
+.bal-c.main .k, .bal-c.main .s { color: rgba(255,255,255,0.85); }
+.bal-c.main .v { color: #fff; }
+.bal-c.total { border-color: var(--accent); background: var(--accent-soft); }
+.bal-trend { display: flex; align-items: flex-end; gap: 3px; height: 34px; max-width: 520px; margin-top: 0.7rem; position: relative; }
+.bal-trend span { flex: 1; background: #b8d8c4; border-radius: 3px 3px 0 0; min-width: 6px; }
+.bal-trend span:last-of-type { background: #1c7a4a; }
+.bal-trend em { position: absolute; right: 0; top: -2px; font-size: 0.65rem; color: var(--dim); font-style: normal; }
+.bal-details { margin-top: 0.8rem; border-top: 1px solid var(--line); padding-top: 0.7rem; }
+@media (max-width: 1250px) { .bal-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .bal-cards { grid-template-columns: 1fr; } }

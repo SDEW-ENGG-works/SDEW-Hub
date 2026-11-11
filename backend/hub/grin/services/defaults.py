@@ -27,6 +27,8 @@ DEFAULT_SETTINGS = {
     "tally_url": "http://localhost:9000",
     # one Tally company per location; empty = the company open in Tally
     "tally_companies": [],
+    # pull every voucher type with its ledger lines (for Ore's books); TAFE invoices are picked out as before
+    "tally_all_vouchers": True,
 }
 
 

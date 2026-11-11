@@ -230,7 +230,8 @@ def checks(dqms_sent=None, chep_invoices=None, report=None):
         for r in rows("SELECT invoices FROM dqms_runs"):
             dqms_sent.update(json.loads(r["invoices"] or "[]"))
     grin_inv = {r["invoice_no"] for r in rows("SELECT DISTINCT invoice_no FROM grin_lines")}
-    last_grin = (one("SELECT MAX(grin_date) d FROM grin_lines") or {}).get("d") or ""
+    from ..supp.services import grin_portal
+    last_grin = grin_portal.covered_until((one("SELECT MAX(grin_date) d FROM grin_lines") or {}).get("d")) or ""
     no_grin = []
     # dates read once (one query each) - not one query per invoice: on the website every query is a trip to the database
     inv_dates = {r["voucher"]: r["d"] for r in rows("SELECT voucher, MIN(inv_date) d FROM sales_lines GROUP BY voucher")}
