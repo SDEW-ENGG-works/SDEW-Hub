@@ -9,6 +9,7 @@ from ..services import status as st_
 from ... import config
 from ...services import pc_jobs
 from ..services import tally
+from ..services import tally_masters
 from ..services.defaults import load_settings, plants
 from ..services.ingest import ingest
 from ..services.mailer import smtp_settings
@@ -37,6 +38,7 @@ def sources(req):
         tally=dict(url=s["tally_url"], companies=s["tally_companies"],
                    **_one("SELECT COUNT(*) n, MIN(inv_date) first, MAX(inv_date) last, MAX(pulled_at) pulled "
                           "FROM gp_tally_invoices"),
+                   books=_masters_status(),
                    status=tally.STATUS if not config.ON_VERCEL else dict(running=False, log=[], error="", finished=""),
                    on_pc=config.ON_VERCEL, agent=pc_jobs.agent_info()),
         sales=_one(f"SELECT COUNT(DISTINCT voucher) n, MIN(inv_date) first, MAX(inv_date) last FROM sales_lines "
@@ -49,6 +51,13 @@ def sources(req):
         files=rows("SELECT * FROM gp_pay_files ORDER BY id DESC LIMIT 50"),
         smtp=dict(ready=smtp_settings()["ready"], host=smtp_settings()["host"], sender=smtp_settings()["sender"]),
         dates=st.data_dates())
+
+
+def _masters_status():
+    try:
+        return tally_masters.status()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _grin_summary(grin_portal):
@@ -134,7 +143,26 @@ def tally_plan(req):
     if d1 > d2:
         raise ApiError("From date is after To date")
     comps = b.get("companies") if b.get("companies") is not None else s["tally_companies"]
-    return dict(chunks=tally.plan(comps, d1, d2))
+    masters = tally_masters.plan(comps, d1, d2) if tally.all_vouchers() else []
+    return dict(chunks=tally.plan(comps, d1, d2), masters=masters)
+
+
+@route("POST", r"/api/tally/ingest-masters")
+def tally_ingest_masters(req):
+    """One masters answer from the browser (groups, ledgers on a date, or the stock summary on a date)."""
+    import base64
+    import gzip
+    b = req.json
+    if b.get("gz"):
+        text = gzip.decompress(base64.b64decode(b["gz"])).decode("utf-8", errors="replace")
+    else:
+        text = b.get("text") or ""
+    if not text.strip():
+        raise ApiError("Empty answer from Tally")
+    try:
+        return dict(ok=True, **tally_masters.ingest(b.get("kind") or "", text, b.get("company") or "", b.get("as_on") or ""))
+    except Exception as e:  # noqa: BLE001
+        return dict(ok=False, error=str(e)[:300])
 
 
 @route("POST", r"/api/tally/ingest")

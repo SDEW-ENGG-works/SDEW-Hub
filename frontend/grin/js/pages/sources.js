@@ -10,6 +10,7 @@ async function loadSources(keepTallyLog) {
             <dt>Tally server</dt><dd>${esc(t.url)}</dd>
             <dt>Companies</dt><dd>${t.companies.length ? esc(t.companies.map(c => c.name + (c.location ? ` (${c.location})` : '')).join(', ')) : 'the company open in Tally'}</dd>
             <dt>Pulled from Tally</dt><dd>${t.n ? `${inr(t.n, 0)} invoices, ${dmy(t.first)} to ${dmy(t.last)} · ${esc(when(t.pulled))}` : 'not yet'}</dd>
+            <dt>Ledgers and stock</dt><dd>${booksLine(t.books)}</dd>
             <dt>Sales Register upload</dt><dd>${s.sales.n ? `${inr(s.sales.n, 0)} TAFE invoices, ${dmy(s.sales.first)} to ${dmy(s.sales.last)}` : 'none'}</dd>
             `;
         if (!keepTallyLog) showTally(t.status);
@@ -37,6 +38,14 @@ async function loadSources(keepTallyLog) {
     } catch (e) {
         showToast(e.message, 'danger');
     }
+}
+
+// Groups, ledgers with their balances and the stock summary (for Ore's Profit and loss and Trial balance).
+function booksLine(b) {
+    if (!b || !b.ledgers || !b.ledgers.n) return 'not yet - they come with the next Pull from Tally';
+    const bal = b.balances && b.balances.dates ? `, balances on ${b.balances.dates} dates (${dmy(b.balances.first)} to ${dmy(b.balances.last)})` : '';
+    const stk = b.stock && b.stock.dates ? `, stock on ${b.stock.dates} dates` : ', no stock values';
+    return `${inr(b.groups.n || 0, 0)} groups, ${inr(b.ledgers.n, 0)} ledgers${bal}${stk} · ${esc(when(b.ledgers.pulled))}`;
 }
 
 function showLog(id, lines) {
@@ -144,6 +153,21 @@ async function tallyPull() {
             }
             total += res.invoices || 0;
             log(`${c.company || 'open company'} ${dmy(c.from)} - ${dmy(c.to)}: ${res.vouchers} vouchers, ${res.invoices} TAFE sales invoices (${how})`);
+        }
+        for (const m of (plan.masters || [])) {
+            let res = null;
+            for (const xml of m.requests) {
+                const r = await fetch(`${BRIDGE}/tally`, { method: 'POST', body: xml });
+                const text = await r.text();
+                if (!r.ok) { res = { ok: false, error: (() => { try { return JSON.parse(text).error; } catch (e) { return text; } })() }; continue; }
+                const gz = await gzipB64(text);
+                res = await apiJson('/api/grin/tally/ingest-masters', 'POST',
+                    Object.assign({ kind: m.kind, company: m.company, as_on: m.as_on }, gz ? { gz } : { text }));
+                if (res.ok) break;
+            }
+            const what = m.kind === 'groups' ? 'groups' : `${m.kind === 'stock' ? 'stock summary' : 'ledger balances'} on ${dmy(m.as_on)}`;
+            if (res && res.ok) log(`${m.company || 'open company'} ${what}: ${res.rows} rows${res.value ? `, stock value ${res.value}` : ''}`);
+            else log(`${m.company || 'open company'} ${what}: not read (${((res && res.error) || 'no answer').slice(0, 120)})`);
         }
         log(`Done - ${total} TAFE invoices read from ${host}`);
         await apiJson('/api/grin/tally/done', 'POST', { invoices: total, from, to, host });

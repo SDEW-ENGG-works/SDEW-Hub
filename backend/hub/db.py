@@ -113,6 +113,19 @@ CREATE TABLE IF NOT EXISTS gp_tally_vouchers(
 CREATE INDEX IF NOT EXISTS ix_gp_tally_vouchers_date ON gp_tally_vouchers(company, vdate);
 CREATE TABLE IF NOT EXISTS gp_tally_vlines(
     vkey TEXT, seq INTEGER, ledger TEXT, amount TEXT, PRIMARY KEY(vkey, seq));
+-- Tally's groups, ledgers, ledger balances and stock summary (grin/services/tally_masters.py), so Ore can work out
+-- the Profit and loss, Trial balance and Balance sheet. Amounts are exact text, debit positive; raw is Tally's text.
+CREATE TABLE IF NOT EXISTS gp_tally_groups(
+    company TEXT, name TEXT, parent TEXT, is_revenue INTEGER, affects_gp INTEGER, deemed_positive INTEGER,
+    pulled_at TEXT, PRIMARY KEY(company, name));
+CREATE TABLE IF NOT EXISTS gp_tally_ledgers(
+    company TEXT, name TEXT, parent TEXT, gstin TEXT, bill_wise INTEGER, opening TEXT, opening_raw TEXT,
+    pulled_at TEXT, PRIMARY KEY(company, name));
+CREATE TABLE IF NOT EXISTS gp_tally_balances(
+    company TEXT, as_on TEXT, ledger TEXT, balance TEXT, raw TEXT, pulled_at TEXT, PRIMARY KEY(company, as_on, ledger));
+CREATE TABLE IF NOT EXISTS gp_tally_stock(
+    company TEXT, as_on TEXT, item TEXT, parent TEXT, unit TEXT, qty TEXT, value TEXT, raw TEXT, pulled_at TEXT,
+    PRIMARY KEY(company, as_on, item));
 CREATE TABLE IF NOT EXISTS gp_register(
     inv_key TEXT PRIMARY KEY, inv_no TEXT, inv_date TEXT, amount REAL, party TEXT, pv TEXT, pv_date TEXT,
     cancelled INTEGER DEFAULT 0, file TEXT, loaded_at TEXT);

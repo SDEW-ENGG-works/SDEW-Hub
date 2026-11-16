@@ -422,7 +422,11 @@ def _run(url, companies, d1, d2, parties):
             _log(f"Reading {name or 'the company open in Tally'} {d1:%d-%b-%Y} to {d2:%d-%b-%Y}")
             invs, how = pull_company(url, name, d1, d2, parties)
             store(invs, name)
-            per.append(dict(company=name or "(open company)", invoices=len(invs), how=how))
+            masters = {}
+            if all_vouchers():           # with the whole books: groups, ledger balances and stock for Ore's P&L
+                from . import tally_masters
+                masters = tally_masters.pull(url, name, d1, d2, _log)
+            per.append(dict(company=name or "(open company)", invoices=len(invs), how=how, masters=masters))
             total += len(invs)
         STATUS["result"] = dict(invoices=total, companies=per)
         log("grin", "Tally pull", f"{total} invoices {d1} to {d2}")
