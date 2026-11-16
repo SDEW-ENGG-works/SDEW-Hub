@@ -162,9 +162,31 @@ class Connection:
             cur._res()
         return cur
 
+    # executemany: thousands of rows (e.g. every Tally ledger and its balance) used to go to Turso as one
+    # statement per row in ONE request at commit - Turso then took longer than the 60 s read time-out
+    # ("Turso not reachable: The read operation timed out"). Now a plain INSERT ... VALUES(?,..) is sent as
+    # multi-row INSERTs (ROWS_PER_INSERT rows each), and the queue goes to Turso every SEND_EVERY statements.
+    ROWS_PER_INSERT = 100
+    SEND_EVERY = 20                 # multi-row inserts per request (= 2,000 rows)
+
     def executemany(self, sql, seq):
-        for args in seq:
-            self.execute(sql, args)
+        import re
+        seq = [tuple(a) for a in seq]
+        m = re.match(r"(?is)^\s*(INSERT\s+(?:OR\s+\w+\s+)?INTO\s+.+?\)\s*VALUES)\s*(\(\s*\?(?:\s*,\s*\?)*\s*\))\s*;?\s*$", sql)
+        if not m or len(seq) < 2:
+            for i, args in enumerate(seq):
+                self.execute(sql, args)
+                if (i + 1) % 500 == 0:
+                    self._flush()
+            return
+        head, one = m.group(1), m.group(2)
+        width = one.count("?")
+        per = max(1, min(self.ROWS_PER_INSERT, 30000 // max(width, 1)))
+        for n, i in enumerate(range(0, len(seq), per), 1):
+            part = seq[i:i + per]
+            self.execute(f"{head} " + ", ".join([one] * len(part)), [v for row in part for v in row])
+            if n % self.SEND_EVERY == 0:
+                self._flush()
 
     def executescript(self, script):
         try:
