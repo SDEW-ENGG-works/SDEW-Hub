@@ -1,0 +1,454 @@
+/* Design tokens, page shell, navbar, cards, buttons, form controls */
+
+/* ====================================================
+   SRI DURGA ENGG WORKS — QUOTATION SYSTEM
+   Design system: restrained corporate palette, one accent,
+   no decorative elements, standard components only.
+   ==================================================== */
+
+:root {
+    --ink: #161b22;
+    --text: #262b33;
+    --muted: #667085;
+    --dim: #98a2b3;
+
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --card-alt: #fafbfc;
+    --line: #e2e5ea;
+    --line-strong: #cbd1db;
+
+    --accent: #1e3a5f;
+    --accent-hover: #16293f;
+    --accent-soft: #eaeef3;
+    --accent-soft-line: #c3cedb;
+
+    --success: #1c7a4a;
+    --success-soft: #eaf6ef;
+    --danger: #ae2c22;
+    --danger-soft: #fbecea;
+    --warning: #9a6300;
+    --warning-soft: #fbf3e2;
+
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+    --radius-sm: 5px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+    --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.12), 0 2px 6px rgba(16, 24, 40, 0.08);
+    --transition: all 0.15s ease;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font);
+    background-color: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Layout Container */
+.app-container {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem 3rem;
+}
+
+/* ============ HEADER / NAVBAR ============ */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.7rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* the Sri Durga logo (same image as on the Excel cost sheets) */
+.brand-logo {
+    display: block;
+    height: 40px;
+    width: auto;
+    flex-shrink: 0;
+}
+
+.brand-divider {
+    width: 1px;
+    height: 26px;
+    background: var(--line-strong);
+}
+
+.accent-dot {
+    display: none;
+}
+
+.brand-subtitle {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.nav-links {
+    display: flex;
+    gap: 0.2rem;
+}
+
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    padding: 0.5rem 0.9rem;
+    font-family: var(--font);
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.nav-btn svg {
+    opacity: 0.75;
+}
+
+.nav-btn:hover {
+    color: var(--ink);
+    background: var(--card-alt);
+}
+
+.nav-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+    border-color: var(--accent-soft-line);
+}
+
+.nav-btn.active svg {
+    opacity: 1;
+}
+
+.badge {
+    background: var(--line);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.05rem 0.45rem;
+    border-radius: 10px;
+    min-width: 1.2rem;
+    text-align: center;
+}
+
+.nav-btn.active .badge {
+    background: var(--accent);
+    color: #fff;
+}
+
+.badge.secondary {
+    background: var(--line);
+    color: var(--muted);
+}
+
+/* db-status-pill removed from markup; rule kept harmless if referenced elsewhere */
+.db-status-pill { display: none; }
+
+/* ============ VIEW SECTIONS ============ */
+.view-section {
+    display: none;
+}
+
+.view-section.active {
+    display: block;
+    animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 1.25rem;
+}
+
+.section-header h2 {
+    font-family: var(--font);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+}
+
+.section-desc {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 0.2rem;
+}
+
+/* ============ CARD ============ */
+.card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-card);
+    margin-bottom: 1.25rem;
+}
+
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-family: var(--font);
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 1.1rem;
+}
+
+.card-title svg {
+    color: var(--accent);
+}
+
+.card-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.card-header-flex .card-title {
+    margin-bottom: 0;
+}
+
+/* ============ BUTTONS ============ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1.05rem;
+    font-family: var(--font);
+    font-size: 0.83rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+    text-decoration: none;
+    line-height: 1.2;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.btn-secondary {
+    background: #ffffff;
+    color: var(--accent);
+    border: 1px solid var(--accent-soft-line);
+}
+
+.btn-secondary:hover {
+    background: var(--accent-soft);
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: #ffffff;
+    border-color: var(--danger);
+}
+
+.btn-danger:hover {
+    background: #8f231b;
+    border-color: #8f231b;
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line-strong);
+}
+
+.btn-outline:hover {
+    color: var(--ink);
+    border-color: var(--dim);
+    background: var(--card-alt);
+}
+
+.btn-sm {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+}
+
+.btn-danger-text {
+    color: var(--muted);
+    background: #ffffff;
+    border: 1px solid var(--line-strong);
+    cursor: pointer;
+    padding: 0.32rem 0.6rem;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: #ffffff;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.btn-icon svg {
+    width: 15px;
+    height: 15px;
+    pointer-events: none;
+}
+
+.btn-icon:hover {
+    color: var(--ink);
+    border-color: var(--dim);
+    background: var(--card-alt);
+}
+
+.btn-icon.btn-icon-danger:hover {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-color: #e6b3ae;
+}
+
+.btn-danger-text:hover {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-color: #e6b3ae;
+}
+
+/* ============ FORM CONTROLS ============ */
+.form-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+
+.form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.8rem;
+}
+
+.form-group label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.required {
+    color: var(--danger);
+    font-weight: 700;
+}
+
+.proc-code-readonly {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    background: var(--accent-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.75rem;
+    color: var(--accent);
+    font-family: var(--font);
+    font-size: 0.87rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+select,
+textarea {
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.75rem;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.87rem;
+    transition: var(--transition);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* narrow phones: the logo alone (it already says Sri Durga Engg. Works) */
+@media (max-width: 520px) {
+    .brand-divider,
+    .nav-brand .brand-subtitle {
+        display: none;
+    }
+
+    .brand-logo {
+        height: 34px;
+    }
+}

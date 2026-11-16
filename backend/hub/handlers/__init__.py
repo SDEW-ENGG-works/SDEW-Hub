@@ -15,3 +15,4 @@ from ..chep import handlers as _chep  # noqa: F401
 from ..dqms import handlers as _dqms  # noqa: F401
 from ..grin import handlers as _grin  # noqa: F401
 from ..pay import handlers as _pay  # noqa: F401
+from ..pocheck import handlers as _pocheck  # noqa: F401

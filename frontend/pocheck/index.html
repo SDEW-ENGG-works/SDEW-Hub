@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — PO Price Check</title>
+    <link rel="icon" href="/assets/favicon.svg?v=fd66ffa491">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css?v=8fef5516b1">
+    <link rel="stylesheet" href="css/03-tables.css?v=39af8da3c3">
+    <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
+    <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
+    <link rel="stylesheet" href="css/40-pocheck.css?v=5e8ab58603">
+    <link rel="stylesheet" href="/css/hub.css?v=37c6e7d030">
+    <script src="/js/hubbar.js?v=e483596db3"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="navbar">
+            <div class="nav-brand">
+                <img class="brand-logo" src="assets/sdew-logo.jpg?v=3908bac85d" alt="Sri Durga Engg. Works" width="189" height="40">
+                <span class="brand-divider" aria-hidden="true"></span>
+                <span class="brand-subtitle">PO Price Check</span>
+            </div>
+        </header>
+
+        <section class="view-section active" id="check-view">
+            <div class="section-header">
+                <div>
+                    <h2>PO Price Check</h2>
+                    <p class="section-desc">Upload TAFE's price-change Excel and the PO .htm files from TAFE Channel, then pick a check.
+                        Files are recognised in each box; a PO uploaded again replaces the earlier copy.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-danger-text" onclick="clearAll()">Clear all uploads</button>
+                </div>
+            </div>
+
+            <div class="pc-uploads">
+                <div class="card pc-up">
+                    <div class="card-title"><span class="pc-tag" style="background:#15803d">1</span> TAFE Excel <span class="hint no-margin" id="n-excel"></span></div>
+                    <p class="hint">The price-change working TAFE sends (Existing / Revised Basic price, Price Effective Date), e.g. DS1615_2000007464_….xls</p>
+                    <label class="dropzone compact" data-kind="excel">
+                        <input type="file" multiple accept=".xls,.xlsx,.htm,.html" onchange="uploadFiles(this.files, 'excel'); this.value=''">
+                        <strong>Drop TAFE's Excel here</strong><span>.xls / .xlsx</span>
+                    </label>
+                    <ul class="pc-files" id="f-excel"></ul>
+                </div>
+                <div class="card pc-up">
+                    <div class="card-title"><span class="pc-tag" style="background:#2f6fb3">2</span> New PO (.htm) <span class="hint no-margin" id="n-new"></span></div>
+                    <p class="hint">The amended POs from TAFE Channel, e.g. DS1615_1010006192_FinalPriceChange_….htm</p>
+                    <label class="dropzone compact" data-kind="new">
+                        <input type="file" multiple accept=".htm,.html" onchange="uploadFiles(this.files, 'new'); this.value=''">
+                        <strong>Drop the new PO files here</strong><span>many at once is fine</span>
+                    </label>
+                    <ul class="pc-files" id="f-new"></ul>
+                </div>
+                <div class="card pc-up">
+                    <div class="card-title"><span class="pc-tag" style="background:#6b46c1">3</span> Old PO (.htm) <span class="hint no-margin" id="n-old"></span></div>
+                    <p class="hint">The same POs before the change. Optional: a PO with no old file is compared with the hub's PO data (Supplementary Bill / DQMS).</p>
+                    <label class="dropzone compact" data-kind="old">
+                        <input type="file" multiple accept=".htm,.html" onchange="uploadFiles(this.files, 'old'); this.value=''">
+                        <strong>Drop the old PO files here</strong><span>optional</span>
+                    </label>
+                    <ul class="pc-files" id="f-old"></ul>
+                </div>
+            </div>
+            <div id="upload-msgs" class="upload-results"></div>
+
+            <div class="pc-actions">
+                <button class="pc-big" id="btn-excel" onclick="runCheck('excel')">
+                    <b>Excel verifier</b>
+                    <span>TAFE's Excel (1) against the new PO (2): is each revised price in the PO, with the same rate from the same date?</span>
+                </button>
+                <button class="pc-big" id="btn-changes" onclick="runCheck('changes')">
+                    <b>PO price changes</b>
+                    <span>Old PO (3, or the hub's PO data) against the new PO (2): which part changed, from when, by how much (₹ and %)?</span>
+                </button>
+            </div>
+
+            <div class="card" id="result-card" style="display:none">
+                <div class="card-header-flex">
+                    <div class="card-title" id="result-title"></div>
+                    <button class="btn btn-secondary btn-sm" id="btn-download" onclick="downloadResult()">Download Excel</button>
+                </div>
+                <p class="hint" id="result-hint"></p>
+                <div class="pc-sum" id="result-sum"></div>
+                <div class="pc-tools"><input type="search" id="result-q" placeholder="Filter: part, PO, description" oninput="renderRows()"></div>
+                <div class="table-wrapper"><table class="data-table compact" id="result-table"></table></div>
+                <p class="hint" id="result-more"></p>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+    <div id="toast-container"></div>
+
+    <script src="js/core/utils.js?v=f0aeaaa393"></script>
+    <script src="js/main.js?v=7082c06d6c"></script>
+</body>
+
+</html>

@@ -1,0 +1,100 @@
+/* Data tables and empty states */
+
+/* ============ DATA TABLES ============ */
+.table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.84rem;
+}
+
+.data-table th {
+    background: var(--card-alt);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.65rem 0.9rem;
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--text);
+    vertical-align: middle;
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+    background: var(--card-alt);
+}
+
+.items-count-tag {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.qty-field {
+    width: 80px !important;
+    font-weight: 600;
+    text-align: center;
+}
+
+.price-field {
+    width: 100px !important;
+    text-align: right;
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.line-total-cell {
+    font-weight: 700;
+    color: var(--ink);
+    font-size: 0.9rem;
+}
+
+/* ============ EMPTY STATE ============ */
+.empty-state {
+    text-align: center;
+    padding: 2.75rem 1.5rem;
+}
+
+.empty-icon {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 0.85rem;
+    color: var(--dim);
+}
+
+.empty-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.empty-state h3 {
+    font-family: var(--font);
+    color: var(--ink);
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.empty-state p {
+    color: var(--muted);
+    font-size: 0.83rem;
+    max-width: 400px;
+    margin: 0 auto;
+}

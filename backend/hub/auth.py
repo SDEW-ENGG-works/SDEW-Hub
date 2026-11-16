@@ -30,7 +30,7 @@ PUBLIC_PREFIXES = ("/login.html", "/api/login", "/api/logout", "/api/auth", "/cs
 # the pages a user can be given (key, name shown on the Admin page)
 PAGES = [("today", "Today"), ("supp", "Supplementary Bill"), ("chep", "CHEP Transfer"), ("dqms", "DQMS Upload"),
          ("grin", "GRIN & Payments"), ("pay", "Payments"), ("find", "Find & trace"), ("drop", "Drop files"),
-         ("items", "Follow-ups"), ("masters", "Masters")]
+         ("items", "Follow-ups"), ("masters", "Masters"), ("pocheck", "PO Price Check")]
 PAGE_KEYS = [k for k, _ in PAGES]
 HUB_VIEWS = ("today", "find", "drop", "items", "masters")
 ALL = "*"
@@ -213,7 +213,9 @@ def needs(path):
         return "admin"
     if p.startswith("/api/supp/grin/"):
         return ("supp", "grin", "pay")       # Fetch GRIN is on these three pages
-    for m in ("supp", "chep", "dqms", "grin", "pay"):
+    if p.startswith("/api/masters"):
+        return "masters"
+    for m in ("supp", "chep", "dqms", "grin", "pay", "pocheck"):
         if p.startswith(f"/api/{m}/") or p == f"/{m}" or p.startswith(f"/{m}/"):
             return m
     if p.startswith("/api/hub/"):
@@ -257,7 +259,7 @@ def home_for(who):
     if not who or who["access"] == ALL or who["access"]:
         return "/"                            # the home screen shows only their apps
     for k in who["access"]:
-        if k in ("supp", "chep", "dqms", "grin", "pay"):
+        if k in ("supp", "chep", "dqms", "grin", "pay", "pocheck"):
             return f"/{k}/"
         if k in HUB_VIEWS:
             return f"/#{k}"

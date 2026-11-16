@@ -160,6 +160,9 @@ CREATE TABLE IF NOT EXISTS m_po_rates(
 -- po_items price blocks as they were (from the PO .htm / export) before the PO master first changed them
 CREATE TABLE IF NOT EXISTS m_po_prev(
     po_no TEXT, part TEXT, blocks TEXT, source TEXT, saved_at TEXT, PRIMARY KEY(po_no, part));
+-- PO Price Check uploads (parsed): TAFE price-change Excel, new PO .htm, old PO .htm
+CREATE TABLE IF NOT EXISTS pc_files(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, name TEXT, po_no TEXT, uploaded_at TEXT, data TEXT);
 CREATE TABLE IF NOT EXISTS m_plants(
     code TEXT PRIMARY KEY, name TEXT, seen_at TEXT);
 -- every master refresh: the 8 am / 9 pm runs (slot 'yyyy-mm-dd HH:MM') and Refresh now (slot 'manual ...')
