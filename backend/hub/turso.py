@@ -167,9 +167,33 @@ class Connection:
             self.execute(sql, args)
 
     def executescript(self, script):
-        for stmt in (s.strip() for s in script.split(";")):
-            if stmt:
-                self.execute(stmt)
+        try:
+            import sqlite3
+            stmts = []
+            buf = []
+            for line in script.splitlines(True):
+                buf.append(line)
+                joined = "".join(buf)
+                if sqlite3.complete_statement(joined):
+                    stmt = joined.strip()
+                    clean = "\n".join(l for l in stmt.splitlines() if not l.strip().startswith("--")).strip().rstrip(";").strip()
+                    if clean:
+                        stmts.append(stmt)
+                    buf = []
+            if buf:
+                leftover = "".join(buf).strip()
+                clean = "\n".join(l for l in leftover.splitlines() if not l.strip().startswith("--")).strip().rstrip(";").strip()
+                if clean:
+                    stmts.append(leftover)
+        except Exception:
+            stmts = []
+            for s in script.split(";"):
+                stmt = s.strip()
+                clean = "\n".join(l for l in stmt.splitlines() if not l.strip().startswith("--")).strip()
+                if clean:
+                    stmts.append(stmt)
+        for stmt in stmts:
+            self.execute(stmt)
         self._flush()
 
     def commit(self):

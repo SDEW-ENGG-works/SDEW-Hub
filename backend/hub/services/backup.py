@@ -64,9 +64,9 @@ def keep_days():
 
 def nightly_hour():
     try:
-        return min(23, max(0, int(config.read_env().get("BACKUP_HOUR") or 21)))
+        return min(23, max(0, int(config.read_env().get("BACKUP_HOUR") or 22)))   # after the 21:00 masters sync
     except ValueError:
-        return 21
+        return 22
 
 
 # ------------------------------------------------------------------ make

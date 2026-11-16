@@ -424,6 +424,8 @@ async function loadMasters() {
     try { d = await api('/api/hub/masters'); } catch (e) { return showToast(e.message, 'danger'); }
     const yes = b => b ? '<span class="env-ok">set</span>' : '<span class="env-no">not set</span>';
     document.getElementById('masters-body').innerHTML = `
+        <div id="sync-box"><div class="card"><p class="hint">Loading the TAFE Channel masters…</p></div></div>
+        <div id="po-box"></div>
         <div class="kv">
             <div><span>POs / part lines</span><b>${d.counts.pos} / ${d.counts.po_items}</b></div>
             <div><span>Parts with CHEP size</span><b>${d.counts.parts_sized}</b></div>
@@ -458,7 +460,98 @@ async function loadMasters() {
                     <tr><td>Login password (APP_PASSWORD)</td><td>${yes(d.env.password)}</td></tr>
                     <tr><td>Database</td><td><b>${d.env.cloud ? 'Turso cloud' : 'this PC (data\\sdew_hub.db)'}</b></td></tr>
                 </tbody></table></div>
-        </div>`;
+        </div>`;    loadSync();
+    loadPoMaster();
 }
+// ---- TAFE Channel masters: automatic at 8:00 and 21:00, Refresh now, history ----
+let _syncTimer = null;
+const LIGHT = { green: ['active', 'Fresh'], amber: ['warn', 'Getting old'], red: ['inactive', 'Old / never'] };
+const RUNST = { ok: ['active', 'OK'], partial: ['sent', 'Part done'], error: ['inactive', 'Failed'], running: ['sent', 'Running…'] };
+const BADGE_CSS = { active: '#dcfce7;color:#166534', warn: '#fef3c7;color:#92400e', inactive: '#fee2e2;color:#991b1b', sent: '#dbeafe;color:#1e40af', muted: '#f1f5f9;color:#475569' };
+function badge(map, k) {
+    const b = map[k] || ['muted', k || '—'];
+    return `<span style="display:inline-block;padding:.1rem .5rem;border-radius:999px;font-size:.72rem;font-weight:600;background:${BADGE_CSS[b[0]] || BADGE_CSS.muted}">${esc(b[1])}</span>`;
+}
+async function loadSync() {
+    const box = document.getElementById('sync-box');
+    if (!box) return;
+    let d;
+    try { d = await api('/api/masters'); } catch (e) { box.innerHTML = `<div class="card"><p class="hint">${esc(e.message)}</p></div>`; return; }
+    const ago = h => h === null || h === undefined ? 'never' : h < 1 ? 'under an hour ago' : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`;
+    box.innerHTML = `<div class="card">
+        <div class="card-header-flex"><div class="card-title">TAFE Channel masters</div>
+            <span class="hint no-margin">${d.enabled ? `Automatic every day at <b>8:00</b> and <b>21:00</b>${d.slot ? ` · running the ${esc(d.slot.slice(11))} sync now` : ` · next ${esc(when(d.next.replace(' ', 'T')))}`}` : '<b>Automatic sync is off</b> (MASTERS_SYNC=0)'}</span></div>
+        <p class="hint">One copy of each, used by every module. The module buttons (Fetch GRIN, Fetch payments …) work as before; Tally invoices come when Tally is connected or with Pull from Tally.</p>
+        <div class="table-wrapper"><table class="data-table compact"><thead><tr><th>Master</th><th>Fresh?</th><th>Last good data</th><th>Last run</th><th></th></tr></thead><tbody>
+        ${d.masters.map(m => `<tr>
+            <td class="strong">${esc(m.label)}</td>
+            <td>${badge(LIGHT, m.light)}</td>
+            <td>${m.last_ok ? `${esc(when(m.last_ok))} <span class="muted">(${ago(m.age_hours)})</span>` : '<span class="muted">never</span>'}</td>
+            <td>${m.last ? `${badge(RUNST, m.running ? 'running' : m.last.status)} <span class="muted">${esc(when(m.last.started))} · ${esc(m.last.trigger || '')}</span><br><span class="hint no-margin">${esc(m.last.error || m.last.message || '')}</span>` : '<span class="muted">—</span>'}</td>
+            <td><div class="row-btns"><button class="btn btn-outline btn-sm" ${m.running ? 'disabled' : ''} onclick="refreshMaster('${m.master}')">Refresh now</button>
+                ${m.master === 'po' ? `<button class="btn btn-outline btn-sm" ${m.running ? 'disabled' : ''} onclick="refreshMaster('po', true)" title="Read 3 years of POs (normally the last 12 months; every Sunday night it reads 3 years)">3 years</button>` : ''}</div></td></tr>`).join('')}
+        </tbody></table></div>
+        <details style="margin-top:.6rem"><summary class="hint">Sync history (last ${d.history.length})</summary>
+            ${table([[r => esc(when(r.started)), 'Started'], [r => esc(r.slot.startsWith('manual') ? 'Refresh now' : r.slot.slice(11) + ' sync'), 'Run'], ['master', 'Master'],
+                     [r => r.try_no > 1 ? `${r.try_no}` : '', 'Try', 'num'], [r => badge(RUNST, r.status), 'Result'], [r => inr(r.rows, 0), 'Rows', 'num'],
+                     [r => esc(r.error || r.message || ''), 'Note'], ['host', 'By']], d.history) || '<p class="hint">No runs yet.</p>'}
+        </details></div>`;
+    clearTimeout(_syncTimer);
+    if (d.masters.some(m => m.running)) _syncTimer = setTimeout(loadSync, 4000);
+}
+async function refreshMaster(m, full) {
+    try {
+        const r = await apiJson(`/api/masters/${m}/refresh`, 'POST', { full: !!full });
+        const run = r.run || {};
+        showToast(run.status === 'running' ? 'Refresh started' : run.status === 'error' ? esc(run.error || 'Failed') : esc(run.message || 'Done'),
+            run.status === 'error' ? 'danger' : 'success', 7000);
+    } catch (e) { showToast(e.message, 'danger', 7000); }
+    loadSync();
+    if (m === 'po') loadPoMaster();
+}
+async function loadPoMaster() {
+    const box = document.getElementById('po-box');
+    if (!box) return;
+    const q = (document.getElementById('po-q') || {}).value || '', plant = (document.getElementById('po-plant') || {}).value || '',
+        open = (document.getElementById('po-open') || {}).checked;
+    let d;
+    try { d = await api(`/api/masters/po?q=${encodeURIComponent(q)}&plant=${encodeURIComponent(plant)}&open=${open === false ? '' : '1'}&limit=300`); }
+    catch (e) { box.innerHTML = ''; return; }
+    const s = d.summary;
+    box.innerHTML = `<div class="card"><div class="card-header-flex"><div class="card-title">PO master <span class="hint no-margin">· from TAFE Channel › PO Details</span></div>
+            <span class="hint no-margin">${inr(s.pos, 0)} POs (${inr(s.open_pos, 0)} open), ${inr(s.lines, 0)} lines${s.fetched ? ` · read ${esc(when(s.fetched))}` : ''}</span></div>
+        <p class="hint">The Supplementary Bill and DQMS use these POs (rates by date, line numbers). A PO .htm upload still works for older price history.</p>
+        <div style="margin:.2rem 0 .6rem"><button class="btn btn-outline btn-sm" onclick="comparePo()">Compare with the PO files (.htm)</button></div>
+        <div id="po-compare"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.4rem 0 .6rem">
+            <input type="search" id="po-q" placeholder="Part, PO or description" value="${esc(q)}" onkeydown="if(event.key==='Enter')loadPoMaster()" style="flex:1;min-width:200px;max-width:340px;padding:.45rem .6rem;border:1px solid #cbd5e1;border-radius:8px">
+            <select id="po-plant" onchange="loadPoMaster()" style="width:auto;padding:.45rem .6rem;border:1px solid #cbd5e1;border-radius:8px"><option value="">All plants</option>${Object.entries(d.plants).map(([c, n]) => `<option value="${esc(c)}" ${c === plant ? 'selected' : ''}>${esc(n)} (${esc(c)})</option>`).join('')}</select>
+            <label style="display:flex;gap:.35rem;align-items:center;font-size:.85rem"><input type="checkbox" id="po-open" ${open === false ? '' : 'checked'} onchange="loadPoMaster()"> Open POs only</label>
+            <button class="btn btn-outline btn-sm" onclick="loadPoMaster()">Search</button></div>
+        ${table([[r => esc(r.po_no), 'PO', 'mono'], [r => esc(r.plant_short || r.plant), 'Plant'], ['line_no', 'Line', 'num'], [r => esc(r.part), 'Part', 'mono'], ['descr', 'Description'],
+                 [r => inr(r.rate), 'Rate', 'num'], [r => dmy(r.price_from), 'Price from'],
+                 [r => (r.history || []).length > 1 ? r.history.map(h => `${inr(h.rate)} <span class="muted">from ${dmy(h.price_from)}</span>`).join('<br>') : '', 'Rate history'],
+                 [r => qty(r.total_qty), 'PO qty', 'num'], [r => qty(r.delivered_qty), 'Delivered', 'num'], [r => qty(r.balance_qty), 'Balance', 'num'],
+                 [r => dmy(r.valid_till), 'Valid till']], d.rows) || `<p class="hint">${s.pos ? 'Nothing found.' : 'No POs yet - press Refresh now on PO master above.'}</p>`}
+        ${d.rows.length >= 300 ? '<p class="hint">First 300 lines - search to narrow down.</p>' : ''}</div>`;
+}
+async function comparePo() {
+    const box = document.getElementById('po-compare');
+    box.innerHTML = '<p class="hint">Comparing…</p>';
+    let d;
+    try { d = await api('/api/masters/po/compare'); } catch (e) { box.innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
+    const n = d.summary, ST = { match: ['active', 'Same'], differs: ['inactive', 'Different'], only_files: ['warn', 'Only in PO files'], only_tafe: ['sent', 'Only in TAFE'] };
+    if (!d.master.pos) { box.innerHTML = '<p class="hint">The PO master is empty - press Refresh now on PO master first.</p>'; return; }
+    const show = d.rows.filter(r => r.status !== 'match');
+    box.innerHTML = `<p class="hint">PO + part pairs: <b>${n.match}</b> same price · <b style="color:#991b1b">${n.differs}</b> different ·
+            <b>${n.only_files}</b> only in the PO files · <b>${n.only_tafe}</b> only in TAFE Channel. The file's price is taken on TAFE's "Price effect from" date.</p>
+        ${table([[r => badge(ST, r.status), 'Result'], [r => esc(r.plant), 'Plant'], [r => esc(r.po_no), 'PO', 'mono'], [r => esc(r.part), 'Part', 'mono'],
+                 [r => r.file_rate == null ? '' : inr(r.file_rate), 'PO file rate', 'num'], [r => r.tafe_rate == null ? '' : inr(r.tafe_rate), 'TAFE rate', 'num'],
+                 [r => r.tafe_total == null ? '' : inr(r.tafe_total), 'Basic+Frt+Pkg', 'num'], [r => dmy(r.price_from), 'Price from'], ['note', 'Note']], show)
+          || '<p class="hint">Every PO part has the same price in TAFE Channel and the PO files.</p>'}`;
+}
+window.comparePo = comparePo;
+window.refreshMaster = refreshMaster;
+window.loadPoMaster = loadPoMaster;
 window.hubFind = hubFind;
 window.addEventListener('hashchange', route);

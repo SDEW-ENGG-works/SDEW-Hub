@@ -131,6 +131,30 @@ CREATE TABLE IF NOT EXISTS gp_mails(
 CREATE TABLE IF NOT EXISTS gp_mail_invoices(
     mail_id INTEGER, inv_key TEXT, sent_at TEXT, PRIMARY KEY(mail_id, inv_key));
 CREATE INDEX IF NOT EXISTS ix_gp_mail_inv ON gp_mail_invoices(inv_key);
+-- ---- masters (one copy each, kept fresh from TAFE Channel at 8 am and 9 pm, see hub/masters) ----
+-- PO master from TAFE Channel > PO Details. Lines by PO + line number, every rate seen is kept (m_po_rates).
+-- The Supplementary Bill and DQMS keep reading po_headers / po_items: the PO master is published into them.
+CREATE TABLE IF NOT EXISTS m_po(
+    po_no TEXT PRIMARY KEY, plant TEXT, po_date TEXT, valid_till TEXT, fetched_at TEXT);
+CREATE TABLE IF NOT EXISTS m_po_lines(
+    po_no TEXT, line_no INTEGER, part TEXT, descr TEXT, issue_no TEXT, currency TEXT, rate REAL, uom TEXT,
+    total_qty REAL, value REAL, delivered_qty REAL, price_from TEXT, price_confirmed TEXT, fetched_at TEXT,
+    PRIMARY KEY(po_no, line_no));
+CREATE INDEX IF NOT EXISTS ix_m_po_lines_part ON m_po_lines(part);
+CREATE TABLE IF NOT EXISTS m_po_rates(
+    po_no TEXT, line_no INTEGER, part TEXT, rate REAL, price_from TEXT, first_seen TEXT,
+    PRIMARY KEY(po_no, line_no, rate, price_from));
+-- po_items price blocks as they were (from the PO .htm / export) before the PO master first changed them
+CREATE TABLE IF NOT EXISTS m_po_prev(
+    po_no TEXT, part TEXT, blocks TEXT, source TEXT, saved_at TEXT, PRIMARY KEY(po_no, part));
+CREATE TABLE IF NOT EXISTS m_plants(
+    code TEXT PRIMARY KEY, name TEXT, seen_at TEXT);
+-- every master refresh: the 8 am / 9 pm runs (slot 'yyyy-mm-dd HH:MM') and Refresh now (slot 'manual ...')
+CREATE TABLE IF NOT EXISTS sync_runs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, slot TEXT, master TEXT, try_no INTEGER, trigger TEXT, token TEXT,
+    host TEXT, status TEXT, started TEXT, finished TEXT, updated_ts REAL, rows INTEGER, message TEXT,
+    error TEXT, detail TEXT, UNIQUE(slot, master, try_no));
+CREATE INDEX IF NOT EXISTS ix_sync_runs_master ON sync_runs(master, id);
 CREATE TABLE IF NOT EXISTS gp_bal_runs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, fetched_at TEXT, fetch_date TEXT, source TEXT, owed REAL, credit REAL,
     debit REAL, general REAL, net REAL, balances TEXT, lines INTEGER);
@@ -224,6 +248,7 @@ MIGRATIONS = [
     ("ps_runs", "lines", "BLOB"),
     ("activity", "user", "TEXT"),
     ("backups", "cloud", "TEXT"),
+    ("m_po_lines", "basic", "REAL"), ("m_po_lines", "freight", "REAL"), ("m_po_lines", "packing", "REAL"),
 ]
 
 

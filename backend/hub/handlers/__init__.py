@@ -7,8 +7,9 @@
   /api/dqms/...                          DQMS Upload
   /api/grin/...                          GRIN & Payments
   /api/pay/...                           Payments (payment marking + sales GRN marking)
+  /api/masters/...                       Masters: TAFE Channel sync (8 am / 9 pm), PO master
 """
-from . import admin, hub, login  # noqa: F401
+from . import admin, hub, login, masters  # noqa: F401
 from ..supp import handlers as _supp  # noqa: F401
 from ..chep import handlers as _chep  # noqa: F401
 from ..dqms import handlers as _dqms  # noqa: F401

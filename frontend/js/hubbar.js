@@ -111,6 +111,12 @@
         });
         fetch('/api/auth').then(r => r.json()).then(a => { authInfo = a; showOut(); }).catch(() => { });
         if (here === 'hub' && can('today')) hubBadges();
+        if (here !== 'hub') {                      // this app was opened: its number on the home screen clears
+            try {
+                const k = 'hub-badges-seen-visited', v = JSON.parse(localStorage.getItem(k) || '[]');
+                if (!v.includes(here)) { v.push(here); localStorage.setItem(k, JSON.stringify(v)); }
+            } catch (e) { /* ignore */ }
+        }
         if (here === 'hub' && can('grin')) hubHomeBal();
         // module pages: open the tab named in the address (/supp/#pos) and keep the address in step
         if (here !== 'hub' && typeof window.switchView === 'function') {
@@ -124,21 +130,48 @@
         }
     });
 
-    // little numbers on the app icons: how many checks need attention there
+    // little numbers on the app icons: how many checks need attention there. Like notifications: once an app
+    // is opened its number clears, and comes back only when something new turns up there (a new check, more
+    // items in a check, a new follow-up). "Seen" is kept in this browser.
+    const SEEN_KEY = 'hub-badges-seen';
+    const readSeen = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}') || {}; } catch (e) { return {}; } };
+    const writeSeen = s => { try { localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } catch (e) { /* private window */ } };
+    let badgeNow = {};                     // module -> {signature: true} of what is showing now
+    function markSeen(mod) {
+        if (!badgeNow[mod]) return;
+        const s = readSeen();
+        s[mod] = Object.assign({}, s[mod] || {}, badgeNow[mod]);
+        writeSeen(s);
+        home.querySelector(`.hub-app[data-mod="${mod}"] .n`)?.remove();
+    }
+    window.hubMarkSeen = markSeen;
     window.hubBadges = function (data) {
         const apply = d => {
             const db = document.getElementById('hub-db');
             if (db && d.db_mode) db.textContent = d.db_mode === 'cloud' ? 'Cloud data' : 'Data on this PC';
-            const per = {};
+            const now = {};
+            const add = (m, sig) => { (now[m] = now[m] || {})[sig] = true; };
             (d.checks || []).forEach(c => {
                 const m = c.module === 'pos' ? 'supp' : (c.module === 'cross' || c.module === 'hub') ? 'today' : c.module;
-                if (c.count) per[m] = (per[m] || 0) + 1;
+                if (c.count) add(m, `${c.title}#${c.count}`);
             });
-            if (d.open_items) per.items = (d.open_items || []).filter(x => x.status !== 'done').length;
+            (d.open_items || []).filter(x => x.status !== 'done').forEach(x => add('items', `item${x.id}`));
+            badgeNow = now;
+            const seen = readSeen();
+            // apps opened some other way (top bar, a link, typing the address) count as seen too
+            let visited = [];
+            try { visited = JSON.parse(localStorage.getItem(SEEN_KEY + '-visited') || '[]'); localStorage.removeItem(SEEN_KEY + '-visited'); } catch (e) { /* ignore */ }
+            visited.forEach(m => { if (now[m]) seen[m] = Object.assign({}, seen[m] || {}, now[m]); });
+            if (visited.length) writeSeen(seen);
             home.querySelectorAll('.hub-app[data-mod]').forEach(a => {
-                const n = per[a.dataset.mod] || 0;
+                const mod = a.dataset.mod;
+                const n = Object.keys(now[mod] || {}).filter(sig => !(seen[mod] || {})[sig]).length;
                 a.querySelector('.n')?.remove();
                 if (n) a.querySelector('.hub-app-ic').insertAdjacentHTML('beforeend', `<span class="n">${n}</span>`);
+                if (!a.dataset.seenHook) {
+                    a.dataset.seenHook = '1';
+                    a.addEventListener('click', () => markSeen(mod));
+                }
             });
         };
         if (data) return apply(data);

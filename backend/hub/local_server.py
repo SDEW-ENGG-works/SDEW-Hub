@@ -174,11 +174,15 @@ def run_server(port=None):
         start_nightly()
     except Exception as e:  # noqa: BLE001
         print("[Backup] nightly backup not started:", e)
-    try:  # TAFE outstanding (Account Balance-Outstanding) once a day
-        from .grin.services.balance_portal import start_daily
-        start_daily()
+    try:  # Masters: every TAFE Channel master at 8:00 and 21:00 (PO, GRIN, payments, notes, outstanding, DQMS)
+        from .masters import sync as masters_sync
+        if masters_sync.enabled():
+            masters_sync.start_loop()
+        else:  # MASTERS_SYNC=0: only the old once-a-day TAFE outstanding fetch
+            from .grin.services.balance_portal import start_daily
+            start_daily()
     except Exception as e:  # noqa: BLE001
-        print("[TAFE balance] daily fetch not started:", e)
+        print("[Masters] sync not started:", e)
     try:  # CHEP: jobs sent from the website reach this PC through the shared cloud database
         from .chep.services.leap_remote import start_agent
         start_agent()

@@ -101,7 +101,7 @@ async function loadSafety() {
         : `Backups are saved in <b>${esc(b.dir)}</b>${b.blob ? ' and in <b>Vercel Blob</b>' : ''}.`;
     const second = web ? '' : (b.copy_dir ? `A copy goes to <b>${esc(b.copy_dir)}</b>. ` : 'No second copy yet — set <b>BACKUP_COPY_DIR</b> in .env on the PC (e.g. a Google Drive folder). ');
     document.getElementById('backup-info').innerHTML = `${where} ` +
-        (web ? 'Every night at 9 PM a backup is made automatically, kept ' : `Every night after ${b.hour}:00 (or as soon as the PC hub starts if it was off), kept `) +
+        (web ? 'Every night at 10 PM (after the 9 PM TAFE Channel sync) a backup is made automatically, kept ' : `Every night after ${b.hour}:00 (or as soon as the PC hub starts if it was off), kept `) +
         `${b.keep_days} days. ` + second +
         (last ? `Last nightly backup: <b>${esc(when(last.at))}</b>.` : '<b>No nightly backup yet.</b>');
     document.getElementById('backups-tbody').innerHTML = d.backups.length ? d.backups.map(x => `
