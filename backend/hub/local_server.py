@@ -183,6 +183,11 @@ def run_server(port=None):
             start_daily()
     except Exception as e:  # noqa: BLE001
         print("[Masters] sync not started:", e)
+    try:  # Tally live: every 2 minutes the changes in Tally (by its AlterIDs), deleted vouchers every night
+        from .grin.services import tally_live
+        tally_live.start_loop()
+    except Exception as e:  # noqa: BLE001
+        print("[Tally live] not started:", e)
     try:  # CHEP: jobs sent from the website reach this PC through the shared cloud database
         from .chep.services.leap_remote import start_agent
         start_agent()

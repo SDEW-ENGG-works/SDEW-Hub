@@ -69,7 +69,7 @@ def collection_request(company, d1, d2, all_types=None):
    <COLLECTION NAME="SDEWHubSales" ISMODIFY="No">
     <TYPE>Voucher</TYPE>
     <FETCH>Date, VoucherNumber, VoucherTypeName, PartyLedgerName, Reference, IsCancelled, IsOptional</FETCH>
-    <FETCH>GUID, Narration</FETCH>
+    <FETCH>GUID, Narration, AlterID</FETCH>
     <FETCH>AllInventoryEntries.*, LedgerEntries.*, AllLedgerEntries.*, InvoiceOrderList.*</FETCH>{filt}
    </COLLECTION>
    <SYSTEM TYPE="Formulae" NAME="SDEWHubIsSales">$$IsSales:$VoucherTypeName</SYSTEM>
@@ -284,7 +284,9 @@ def parse_full(text):
                 order.append(name)
             sums[name] -= _money(_t(e, "AMOUNT"))
         lines = [(n, sums[n]) for n in order if sums[n] != 0]
-        out.append(dict(guid=_t(v, "GUID"), vtype=v.get("VCHTYPE") or _t(v, "VOUCHERTYPENAME"),
+        alter = re.match(r"\d+", _t(v, "ALTERID"))
+        out.append(dict(guid=_t(v, "GUID"), alter_id=int(alter.group(0)) if alter else None,
+                        vtype=v.get("VCHTYPE") or _t(v, "VOUCHERTYPENAME"),
                         vno=_t(v, "VOUCHERNUMBER"), vdate=vdate, party=_t(v, "PARTYLEDGERNAME"),
                         reference=_t(v, "REFERENCE"), narration=_t(v, "NARRATION")[:500],
                         cancelled=1 if _t(v, "ISCANCELLED").lower() == "yes" or _t(v, "ISDELETED").lower() == "yes" else 0,
@@ -309,13 +311,15 @@ def store_full(vouchers, company):
         key = voucher_key(company, v)
         total = sum((a for _, a in v["lines"] if a > 0), Decimal("0.00"))
         con.execute("INSERT INTO gp_tally_vouchers(vkey, company, guid, vtype, vno, vdate, party, reference, narration, "
-                    "cancelled, optional, total, pulled_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(vkey) DO UPDATE "
+                    "cancelled, optional, total, pulled_at, alter_id, deleted) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0) "
+                    "ON CONFLICT(vkey) DO UPDATE "
                     "SET company=excluded.company, guid=excluded.guid, vtype=excluded.vtype, vno=excluded.vno, "
                     "vdate=excluded.vdate, party=excluded.party, reference=excluded.reference, "
                     "narration=excluded.narration, cancelled=excluded.cancelled, optional=excluded.optional, "
-                    "total=excluded.total, pulled_at=excluded.pulled_at",
+                    "total=excluded.total, pulled_at=excluded.pulled_at, "
+                    "alter_id=COALESCE(excluded.alter_id, gp_tally_vouchers.alter_id), deleted=0",
                     (key, company, v["guid"], v["vtype"], v["vno"], v["vdate"], v["party"], v["reference"],
-                     v["narration"], v["cancelled"], v["optional"], str(total), now))
+                     v["narration"], v["cancelled"], v["optional"], str(total), now, v.get("alter_id")))
         con.execute("DELETE FROM gp_tally_vlines WHERE vkey=?", (key,))
         for seq, (ledger, amount) in enumerate(v["lines"]):
             con.execute("INSERT INTO gp_tally_vlines(vkey, seq, ledger, amount) VALUES(?,?,?,?)",

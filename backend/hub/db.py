@@ -265,6 +265,8 @@ MIGRATIONS = [
     ("activity", "user", "TEXT"),
     ("backups", "cloud", "TEXT"),
     ("m_po_lines", "basic", "REAL"), ("m_po_lines", "freight", "REAL"), ("m_po_lines", "packing", "REAL"),
+    # Tally live (grin/services/tally_live.py): Tally's change number of each voucher, and vouchers gone from Tally
+    ("gp_tally_vouchers", "alter_id", "INTEGER"), ("gp_tally_vouchers", "deleted", "INTEGER DEFAULT 0"),
 ]
 
 

@@ -14,6 +14,7 @@ async function loadSources(keepTallyLog) {
             <dt>Sales Register upload</dt><dd>${s.sales.n ? `${inr(s.sales.n, 0)} TAFE invoices, ${dmy(s.sales.first)} to ${dmy(s.sales.last)}` : 'none'}</dd>
             `;
         if (!keepTallyLog) showTally(t.status);
+        tallyLiveLine();
         if (ON_SITE) bridgePing().then(p => {
             const kv = document.getElementById('tally-kv');
             kv.insertAdjacentHTML('beforeend', `<dt>This computer</dt><dd>${p
@@ -37,6 +38,34 @@ async function loadSources(keepTallyLog) {
             : `<tr><td colspan="5" class="muted-cell">No payment files yet</td></tr>`;
     } catch (e) {
         showToast(e.message, 'danger');
+    }
+}
+
+// Tally live: the PC hub checks Tally every few minutes for changes (and every night for deleted vouchers).
+async function tallyLiveLine() {
+    let lv;
+    try { lv = await api('/api/grin/tally/live'); } catch (e) { return; }
+    const kv = document.getElementById('tally-kv');
+    if (!kv) return;
+    const parts = Object.entries(lv.companies || {}).map(([name, c]) => {
+        const err = c.error ? ` <span class="status-badge inactive">${esc(c.error)}</span> (${esc(when(c.error_at))})` : '';
+        const changed = c.changed_at ? `, last change ${esc(when(c.changed_at))} (${c.last ? `${c.last.vouchers} vouchers` : ''})` : '';
+        const night = c.night_on ? `, deleted check ${dmy(c.night_on)}${c.night && c.night.deleted ? ` (${c.night.deleted} gone)` : ''}` : '';
+        return `${esc(name)}: checked ${esc(when(c.checked_at)) || 'not yet'}${changed}${night}${c.note ? ` - ${esc(c.note)}` : ''}${err}`;
+    });
+    const state = lv.on ? `<span class="status-badge active">on</span> every ${Math.round(lv.seconds / 60 * 10) / 10} min` : '<span class="status-badge muted">off</span> (TALLY_LIVE=0)';
+    const btns = !ON_SITE && lv.on ? ` <button class="btn btn-sm" onclick="tallyLiveCheck(false)">Check now</button>
+        <button class="btn btn-sm" onclick="tallyLiveCheck(true)">Check deleted now</button>` : '';
+    kv.insertAdjacentHTML('beforeend', `<dt>Live from Tally</dt><dd>${state}${parts.length ? ' - ' + parts.join('; ') : ''}${btns}</dd>`);
+}
+
+async function tallyLiveCheck(night) {
+    try {
+        await apiJson('/api/grin/tally/live/check', 'POST', { night });
+        showToast(night ? 'Checking Tally for changes and deleted vouchers…' : 'Checking Tally for changes…', 'success');
+        setTimeout(() => loadSources(true), night ? 20000 : 5000);
+    } catch (e) {
+        showToast(e.message, 'danger', 9000);
     }
 }
 

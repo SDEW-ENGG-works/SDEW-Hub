@@ -188,6 +188,26 @@ def tally_ingest(req):
     return r
 
 
+@route("GET", r"/api/tally/live")
+def tally_live_status(req):
+    from ..services import tally_live
+    return tally_live.status()
+
+
+@route("POST", r"/api/tally/live/check")
+def tally_live_check(req):
+    """Check Tally for changes now (and, with night=true, the deleted vouchers and month end balances)."""
+    import threading
+    from ..services import tally_live
+    if config.ON_VERCEL:
+        raise ApiError("Tally live runs on the SDEW PC by itself every few minutes. Use the hub on that PC to check now.")
+    if not tally_live.enabled():
+        raise ApiError("Tally live is off (TALLY_LIVE=0 in .env)")
+    night = bool((req.json or {}).get("night"))
+    threading.Thread(target=tally_live.tick, kwargs=dict(force_night=night), daemon=True).start()
+    return dict(started=True, night=night)
+
+
 @route("POST", r"/api/tally/done")
 def tally_done(req):
     from ...db import log
