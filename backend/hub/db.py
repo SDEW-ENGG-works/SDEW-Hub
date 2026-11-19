@@ -163,6 +163,14 @@ CREATE TABLE IF NOT EXISTS m_po_prev(
 -- PO Price Check uploads (parsed): TAFE price-change Excel, new PO .htm, old PO .htm
 CREATE TABLE IF NOT EXISTS pc_files(
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, name TEXT, po_no TEXT, uploaded_at TEXT, data TEXT);
+-- DR -> Invoice: one draft invoice per TAFE Delivery Request line; checked, verified, then sent to Tally
+CREATE TABLE IF NOT EXISTS drinv_drafts(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, dr_no TEXT, part TEXT, plant TEXT, party TEXT, po_no TEXT, descr TEXT,
+    bin TEXT, dr_req INTEGER, dr_size REAL, dr_qty REAL, item_name TEXT, gst_rate REAL, inv_no TEXT, inv_date TEXT,
+    qty REAL, pieces REAL, packages REAL, kgs TEXT, rate REAL, rate_po REAL, amount REAL, cgst REAL, sgst REAL,
+    igst REAL, round_off REAL, total REAL, remarks TEXT, status TEXT, issues TEXT, file_name TEXT,
+    created_by TEXT, created_at TEXT, verified_by TEXT, verified_at TEXT, sent_by TEXT, sent_at TEXT,
+    tally_msg TEXT, last_rate REAL, last_inv TEXT, UNIQUE(dr_no, part));
 CREATE TABLE IF NOT EXISTS m_plants(
     code TEXT PRIMARY KEY, name TEXT, seen_at TEXT);
 -- every master refresh: the 8 am / 9 pm runs (slot 'yyyy-mm-dd HH:MM') and Refresh now (slot 'manual ...')

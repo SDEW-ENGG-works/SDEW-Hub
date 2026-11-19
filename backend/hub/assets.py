@@ -12,7 +12,7 @@ import re
 from . import config
 
 _TAG = re.compile(r'((?:href|src)="(/?(?:css|js|assets)/[^"?]+))(?:\?v=[^"]*)?"')
-PAGES = ("", "supp", "chep", "dqms", "grin", "pay", "pocheck", "admin")
+PAGES = ("", "supp", "chep", "dqms", "grin", "pay", "pocheck", "drinv", "admin")
 
 
 def fingerprint(base, rel_path):

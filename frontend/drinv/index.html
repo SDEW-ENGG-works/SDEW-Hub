@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sri Durga Engg Works — DR → Invoice</title>
+    <link rel="icon" href="/assets/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/01-base.css">
+    <link rel="stylesheet" href="css/03-tables.css">
+    <link rel="stylesheet" href="css/06-modals.css">
+    <link rel="stylesheet" href="css/20-supp.css">
+    <link rel="stylesheet" href="css/40-drinv.css">
+    <link rel="stylesheet" href="/css/hub.css">
+    <script src="/js/hubbar.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="navbar">
+            <div class="nav-brand">
+                <img class="brand-logo" src="assets/sdew-logo.jpg" alt="Sri Durga Engg. Works" width="189" height="40">
+                <span class="brand-divider" aria-hidden="true"></span>
+                <span class="brand-subtitle">DR → Invoice</span>
+            </div>
+        </header>
+
+        <section class="view-section active" id="drinv-view">
+            <div class="section-header">
+                <div>
+                    <h2>DR → Invoice</h2>
+                    <p class="section-desc">Upload TAFE Delivery Requests: each DR line becomes a draft sales invoice with the PO price of the
+                        invoice date, GST, packages / pieces and the crate remarks. Check, number and verify them, then send them to Tally.
+                        Generate the IRN (e-invoice) and e-way bill in Tally as usual.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="loadDrafts(true)">Recheck</button>
+                </div>
+            </div>
+
+            <div class="di-steps">
+                <span><b>1</b>Upload DRs</span><span><b>2</b>Check &amp; give invoice numbers</span><span><b>3</b>Verify</span>
+                <span><b>4</b>Send to Tally</span><span><b>5</b>IRN / e-way bill in Tally</span>
+            </div>
+
+            <div class="di-top">
+                <div class="card">
+                    <div class="card-title">Upload Delivery Requests</div>
+                    <div class="di-row"><label for="inv-date">Invoice date</label><input type="date" id="inv-date">
+                        <span class="di-small">the PO price valid on this date is used</span></div>
+                    <label class="dropzone compact">
+                        <input type="file" multiple accept=".pdf" onchange="uploadDRs(this.files); this.value=''">
+                        <strong>Drop the DR PDFs here</strong><span>DeliveryRequest_….pdf from TAFE Channel, many at once</span>
+                    </label>
+                    <div id="upload-msgs" class="upload-results"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Tally</div>
+                    <p class="hint">Voucher type <b id="t-vtype"></b><span id="t-company"></span>. Party ledgers:
+                        <span id="t-parties"></span></p>
+                    <ul class="di-learn" id="t-learned"></ul>
+                    <div class="di-row">
+                        <button class="btn btn-secondary btn-sm" onclick="learnFromTally()">Learn invoice format from Tally</button>
+                        <span class="di-small">reads the last TAFE invoice of each plant (PO NUMBER, NO OF PICES … fields)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="di-bar" id="di-filter"></div>
+                <div class="di-bar">
+                    <label class="di-small">Number from</label>
+                    <input type="text" id="start-no" style="width:130px;padding:.35rem .5rem;border:1px solid #cbd5e1;border-radius:8px">
+                    <button class="btn btn-secondary btn-sm" onclick="giveNumbers()">Give numbers to ticked</button>
+                    <span class="sp"></span>
+                    <button class="btn btn-secondary btn-sm" onclick="verify(false)">Back to draft</button>
+                    <button class="btn btn-primary btn-sm" onclick="verify(true)">Verify ticked</button>
+                    <button class="btn btn-primary btn-sm" id="btn-send" onclick="sendToTally()">Send verified to Tally</button>
+                    <button class="btn btn-danger-text btn-sm" onclick="removeDrafts()">Delete ticked</button>
+                </div>
+                <div class="di-log" id="di-log"></div>
+                <div class="table-wrapper"><table class="data-table compact" id="di-table"></table></div>
+                <p class="hint" id="di-foot"></p>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop" id="confirm-modal">
+        <div class="modal-card confirm-modal-card">
+            <div class="confirm-modal-icon">!</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-text"></p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-outline" onclick="closeConfirm(false)">Cancel</button>
+                <button class="btn btn-danger" onclick="closeConfirm(true)">Yes</button>
+            </div>
+        </div>
+    </div>
+    <div id="toast-container"></div>
+
+    <script src="js/core/utils.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>

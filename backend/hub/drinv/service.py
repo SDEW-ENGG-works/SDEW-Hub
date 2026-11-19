@@ -1,0 +1,617 @@
+"""DR -> Invoice: drafts from Delivery Requests, checks, totals, and the Tally voucher XML."""
+import html
+import json
+import re
+from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal
+
+from ..db import get_db, get_setting, one, rows, set_setting
+from ..dqms.services import dr_pdf
+from ..supp.services.po_parser import price_on
+
+CFG_KEY = "drinv.config"
+# Ledgers as used in Tally's GST SALES NEW vouchers for TAFE (read from the pulled Tally books)
+DEFAULT = dict(
+    vtype="GST SALES NEW", round_off="Round Off", cgst="Output CGST", sgst="Output SGST", igst="Output IGST",
+    unit="QTY", godown="FINISHED GOODS", company="",
+    plants=dict(
+        MDU=dict(party="Tractors and Farm Equpment Ltd", inter=False,
+                 sales={"5": "GST SALES @ 5%", "18": "GST Sales 18%"}),
+        DBR=dict(party="Tractors and Farm Equipment Ltd - B", inter=True,
+                 sales={"5": "GST SALES INTERSTATE @ 5%", "18": "GST SALES INTERSTATE @ 18%"}),
+    ),
+    templates={},       # per plant: what a real invoice in Tally carries (UDF fields, party details) - learn()
+)
+# HSN 73181500 (banjo bolts) and 84099941 (breather) are 18 %; tractor parts 8708xxxx are 5 %
+GST18 = {"0714224M02", "0714315M03", "1812P03001"}
+EWAY_LIMIT = 50000
+EDITABLE = ("inv_no", "inv_date", "qty", "pieces", "packages", "kgs", "rate", "remarks", "item_name", "gst_rate")
+
+
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _user():
+    try:
+        from ..db import CURRENT_USER
+        return CURRENT_USER.get() or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def D(v):
+    return Decimal(str(v or 0))
+
+
+def r2(v):
+    return float(D(v).quantize(Decimal("0.01"), ROUND_HALF_UP))
+
+
+def config():
+    c = json.loads(json.dumps(DEFAULT))
+    saved = get_setting(CFG_KEY) or {}
+    for k, v in saved.items():
+        if k == "plants":
+            for p, pv in (v or {}).items():
+                c["plants"].setdefault(p, {}).update(pv)
+        else:
+            c[k] = v
+    if not c.get("company"):
+        try:
+            from ..grin.services.defaults import load_settings
+            comps = load_settings().get("tally_companies") or []
+            if comps:
+                c["company"] = comps[0].get("name", "") if isinstance(comps[0], dict) else comps[0]
+        except Exception:  # noqa: BLE001
+            pass
+    return c
+
+
+def save_config(patch):
+    saved = get_setting(CFG_KEY) or {}
+    for k, v in (patch or {}).items():
+        if k == "plants":
+            for p, pv in (v or {}).items():
+                saved.setdefault("plants", {}).setdefault(p, {}).update(pv)
+        elif k in DEFAULT:
+            saved[k] = v
+    set_setting(CFG_KEY, saved)
+    return config()
+
+
+# ---------------------------------------------------------------- what Tally already knows about each part
+def history(parts):
+    """part -> dict(item_name, gst, last_rate, last_inv, crate, lid, carton) from the newest TAFE invoice in Tally."""
+    parts = sorted({p for p in parts if p})
+    out = {}
+    if not parts:
+        return out
+    q = ",".join("?" * len(parts))
+    hits = rows(
+        f"SELECT l.part, l.item_name, l.rate, i.inv_no, i.inv_date FROM gp_tally_lines l "
+        f"JOIN gp_tally_invoices i ON i.inv_key=l.inv_key WHERE l.part IN ({q}) AND i.cancelled=0 "
+        f"ORDER BY i.inv_date DESC, i.inv_no DESC", tuple(parts))
+    best = {}
+    for h in hits:
+        best.setdefault(h["part"], h)
+    vnos = sorted({h["inv_no"] for h in best.values()})
+    vmap = {}
+    if vnos:
+        q2 = ",".join("?" * len(vnos))
+        for v in rows(f"SELECT vkey, vno, narration FROM gp_tally_vouchers WHERE vno IN ({q2}) AND vtype LIKE '%SALES%'",
+                      tuple(vnos)):
+            vmap[v["vno"]] = v
+        keys = [v["vkey"] for v in vmap.values()]
+        led = {}
+        if keys:
+            q3 = ",".join("?" * len(keys))
+            for x in rows(f"SELECT vkey, ledger FROM gp_tally_vlines WHERE vkey IN ({q3})", tuple(keys)):
+                led.setdefault(x["vkey"], []).append(x["ledger"])
+        for v in vmap.values():
+            v["ledgers"] = led.get(v["vkey"], [])
+    for part, h in best.items():
+        v = vmap.get(h["inv_no"]) or {}
+        gst = None
+        for lg in v.get("ledgers", []):
+            m = re.search(r"SALES.*?(\d+)\s*%", lg, re.I)
+            if m:
+                gst = float(m.group(1))
+        narr = v.get("narration") or ""
+        m = re.search(r"CRATE\s*-\s*(\d+).*?LID\s*-\s*(\d+)", narr, re.I)
+        out[part] = dict(item_name=h["item_name"], gst=gst, last_rate=h["rate"], last_inv=h["inv_no"],
+                         last_date=h["inv_date"], crate=m.group(1) if m else "", lid=m.group(2) if m else "",
+                         carton=bool(re.search(r"CARTON", narr, re.I)))
+    return out
+
+
+def dr_invoiced(dr_nos):
+    """DR numbers already written in a Tally invoice's narration -> {dr: inv_no}."""
+    found = {}
+    for d in dr_nos:
+        r = one("SELECT vno FROM gp_tally_vouchers WHERE narration LIKE ? AND vtype LIKE '%SALES%' AND cancelled=0 "
+                "ORDER BY vdate DESC LIMIT 1", (f"%DR {d}%",))
+        if r:
+            found[d] = r["vno"]
+    return found
+
+
+def next_number():
+    """The number after the last GST SALES NEW invoice in Tally or in the drafts: '15885/26-27'."""
+    best, suffix = 0, ""
+    for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? ORDER BY vdate DESC LIMIT 400",
+                  (config()["vtype"],)) + rows("SELECT inv_no vno FROM drinv_drafts WHERE inv_no<>''"):
+        m = re.match(r"^(\d+)(/.*)?$", (r["vno"] or "").strip())
+        if m and int(m.group(1)) > best:
+            best, suffix = int(m.group(1)), m.group(2) or ""
+    return f"{best + 1}{suffix}" if best else ""
+
+
+# ---------------------------------------------------------------- figures
+def remarks_for(h, packages, dr_no, bin_type=""):
+    n = int(packages or 0) or 1
+    if h and h.get("crate"):
+        return f"FOR CRATE - {h['crate']} - {n} NOS LID - {h['lid']} - {n} NOS DR {dr_no}"
+    if (h and h.get("carton")) or "CARTON" in (bin_type or "").upper():
+        return f"FOR CARTON BOX - {n} NOS DR {dr_no}"
+    return f"DR {dr_no}"
+
+
+def compute(d, cfg=None):
+    """Totals of one draft (MDU: CGST + SGST, DBR: IGST), rounded to the rupee like Tally."""
+    cfg = cfg or config()
+    pl = cfg["plants"].get(d.get("plant") or "", {})
+    amount = D(d.get("qty")) * D(d.get("rate"))
+    amount = amount.quantize(Decimal("0.01"), ROUND_HALF_UP)
+    g = D(d.get("gst_rate"))
+    cgst = sgst = igst = Decimal(0)
+    if pl.get("inter"):
+        igst = (amount * g / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    else:
+        cgst = (amount * g / 200).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        sgst = cgst
+    gross = amount + cgst + sgst + igst
+    total = gross.quantize(Decimal("1"), ROUND_HALF_UP)
+    d.update(amount=float(amount), cgst=float(cgst), sgst=float(sgst), igst=float(igst),
+             round_off=float(total - gross), total=float(total), party=pl.get("party", ""))
+    return d
+
+
+def check(d, cfg=None, taken=None):
+    """-> list of dict(level='error'|'warn'|'info', text). Errors block Verify and Send."""
+    cfg = cfg or config()
+    out = []
+    add = lambda lv, t: out.append(dict(level=lv, text=t))  # noqa: E731
+    if d.get("plant") not in cfg["plants"]:
+        add("error", f"PO {d.get('po_no')} is not in the hub's PO data (no plant) - fetch it in Masters > PO master")
+    if not d.get("rate"):
+        add("error", f"No price for {d.get('part')} on PO {d.get('po_no')} on {d.get('inv_date')}")
+    elif d.get("rate_po") is not None and abs((d.get("rate") or 0) - (d.get("rate_po") or 0)) >= 0.005:
+        add("warn", f"Rate {d['rate']:.2f} differs from the PO price {d['rate_po']:.2f}")
+    lr = d.get("last_rate")
+    if d.get("rate") and lr and abs(lr - d["rate"]) >= 0.005:
+        add("info", f"Last invoiced in Tally at {lr:.2f} ({d.get('last_inv')}); PO price on this date is "
+                    f"{d.get('rate_po') or d['rate']:.2f}")
+    if not d.get("item_name"):
+        add("error", "Tally stock item not known for this part - type the item name as it is in Tally")
+    if not d.get("gst_rate"):
+        add("error", "GST % not set")
+    no = (d.get("inv_no") or "").strip()
+    if not no:
+        add("error", "Invoice number not entered")
+    else:
+        if one("SELECT vno FROM gp_tally_vouchers WHERE vno=? AND vtype LIKE '%SALES%'", (no,)):
+            add("error", f"Invoice {no} already exists in Tally")
+        if taken and taken.get(no, d.get("id")) != d.get("id"):
+            add("error", f"Invoice {no} is used on another draft")
+    q, dq = float(d.get("qty") or 0), float(d.get("dr_qty") or 0)
+    if q <= 0:
+        add("error", "Quantity is 0")
+    elif dq and q > dq:
+        add("error", f"Quantity {q:g} is more than the DR quantity {dq:g}")
+    elif dq and q < dq:
+        add("warn", f"Part supply: {q:g} of the DR's {dq:g}")
+    pk, pc = float(d.get("packages") or 0), float(d.get("pieces") or 0)
+    if pk and pc and abs(pk * pc - q) > 0.001:
+        add("warn", f"Packages × pieces = {pk * pc:g}, not the total {q:g}")
+    if not re.search(rf"DR\s*{re.escape(d.get('dr_no') or '')}", d.get("remarks") or ""):
+        add("warn", "Remarks do not carry the DR number")
+    if (d.get("total") or 0) > EWAY_LIMIT:
+        add("info", f"Over ₹{EWAY_LIMIT:,}: generate the e-way bill in Tally with the IRN")
+    if d.get("_dr_done"):
+        add("error", f"DR {d['dr_no']} is already invoiced in Tally ({d['_dr_done']})")
+    return out
+
+
+# ---------------------------------------------------------------- drafts
+def _rate(po_no, part, inv_date):
+    it = one("SELECT blocks, rate FROM po_items WHERE po_no=? AND part=?", (po_no, part))
+    if not it:
+        return None
+    try:
+        r = price_on(json.loads(it["blocks"] or "[]"), inv_date)
+    except Exception:  # noqa: BLE001
+        r = None
+    return r
+
+
+def _plant(po_no):
+    h = one("SELECT plant FROM po_headers WHERE po_no=?", (po_no,))
+    p = (h or {}).get("plant") or ""
+    if not p:
+        p = "MDU" if po_no.startswith("103") else "DBR" if po_no.startswith("121") else ""
+    return p
+
+
+def add_pdf(name, data, inv_date=None):
+    """One DR PDF -> drafts (one per part). -> message."""
+    lines = dr_pdf.parse_pdf(data)
+    if not lines:
+        raise ValueError("Not a TAFE Delivery Request (no DR number / part lines found)")
+    inv_date = inv_date or date.today().isoformat()
+    hist = history([x["part"] for x in lines])
+    done = dr_invoiced({x["dr_no"] for x in lines})
+    con = get_db()
+    made, skipped = 0, 0
+    for x in lines:
+        if one("SELECT id FROM drinv_drafts WHERE dr_no=? AND part=?", (x["dr_no"], x["part"])):
+            skipped += 1
+            continue
+        h = hist.get(x["part"]) or {}
+        rate = _rate(x["order_no"], x["part"], inv_date)
+        gst = h.get("gst") or (18.0 if x["part"] in GST18 else 5.0)
+        d = dict(dr_no=x["dr_no"], part=x["part"], plant=_plant(x["order_no"]), po_no=x["order_no"],
+                 descr=x["descr"], bin=x["bin"], dr_req=x["req"], dr_size=x["size"], dr_qty=x["qty"],
+                 item_name=h.get("item_name") or "", gst_rate=gst, inv_no="", inv_date=inv_date, qty=x["qty"],
+                 pieces=x["size"], packages=x["req"], kgs="", rate=rate, rate_po=rate,
+                 remarks=remarks_for(h, x["req"], x["dr_no"], x["bin"]), status="draft", file_name=name,
+                 created_by=_user(), created_at=_now(), last_rate=h.get("last_rate"), last_inv=h.get("last_inv"))
+        compute(d)
+        d["_dr_done"] = done.get(x["dr_no"])
+        d["issues"] = json.dumps(check(d))
+        d.pop("_dr_done")
+        cols = list(d)
+        con.execute(f"INSERT INTO drinv_drafts({','.join(cols)}) VALUES({','.join('?' * len(cols))})",
+                    tuple(d[c] for c in cols))
+        made += 1
+    con.commit()
+    dr = lines[0]["dr_no"]
+    msg = f"DR {dr}: {made} invoice draft{'s' if made != 1 else ''}"
+    if skipped:
+        msg += f" ({skipped} already here)"
+    if dr in done:
+        msg += f" - already invoiced in Tally as {done[dr]}"
+    return dict(message=msg, made=made, skipped=skipped)
+
+
+def _row(r):
+    r = dict(r)
+    r["issues"] = json.loads(r.get("issues") or "[]")
+    return r
+
+
+def recheck(ids=None):
+    """Re-run the checks on open drafts (numbers taken, invoices pulled from Tally since)."""
+    cfg = config()
+    where = "WHERE status<>'sent'" + (f" AND id IN ({','.join('?' * len(ids))})" if ids else "")
+    ds = rows(f"SELECT * FROM drinv_drafts {where}", tuple(ids or ()))
+    taken = {}
+    for r in rows("SELECT id, inv_no FROM drinv_drafts WHERE inv_no<>''"):
+        taken.setdefault(r["inv_no"].strip(), r["id"])
+    dups = {}
+    for r in rows("SELECT inv_no, COUNT(*) n FROM drinv_drafts WHERE inv_no<>'' GROUP BY inv_no HAVING n>1"):
+        dups[r["inv_no"]] = True
+    done = dr_invoiced({d["dr_no"] for d in ds})
+    con = get_db()
+    for d in ds:
+        d["_dr_done"] = done.get(d["dr_no"])
+        t = dict(taken)
+        if d["inv_no"] in dups:
+            t[d["inv_no"]] = -1
+        iss = check(d, cfg, t)
+        status = d["status"]
+        if status == "verified" and any(i["level"] == "error" for i in iss):
+            status = "draft"
+        con.execute("UPDATE drinv_drafts SET issues=?, status=? WHERE id=?", (json.dumps(iss), status, d["id"]))
+    con.commit()
+
+
+def listing(status=""):
+    q = "SELECT * FROM drinv_drafts" + (" WHERE status=?" if status else "") + " ORDER BY status='sent', inv_no='', inv_no, id"
+    ds = [_row(r) for r in rows(q, (status,) if status else ())]
+    cnt = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM drinv_drafts GROUP BY status")}
+    return dict(drafts=ds, counts=cnt, next_no=next_number(), config=public_config())
+
+
+def public_config():
+    c = config()
+    t = c.get("templates") or {}
+    return dict(vtype=c["vtype"], company=c["company"], plants=c["plants"],
+                learned={p: dict(from_inv=v.get("from_inv"), at=v.get("at"), fields=[f["desc"] for f in v.get("udf", [])])
+                         for p, v in t.items()})
+
+
+def update(did, patch):
+    d = one("SELECT * FROM drinv_drafts WHERE id=?", (did,))
+    if not d:
+        raise ValueError("Draft not found")
+    if d["status"] == "sent":
+        raise ValueError("Already sent to Tally - change it in Tally")
+    for k in EDITABLE:
+        if k in patch:
+            v = patch[k]
+            if k in ("qty", "pieces", "packages", "rate", "gst_rate"):
+                v = float(v) if str(v).strip() not in ("", "None") else None
+            d[k] = v.strip() if isinstance(v, str) else v
+    if "inv_date" in patch and "rate" not in patch:
+        r = _rate(d["po_no"], d["part"], d["inv_date"])
+        d["rate"] = d["rate_po"] = r
+    elif "inv_date" in patch:
+        d["rate_po"] = _rate(d["po_no"], d["part"], d["inv_date"])
+    q = float(d.get("qty") or 0)
+    if "packages" in patch and "pieces" not in patch and d.get("packages") and q % float(d["packages"]) == 0:
+        d["pieces"] = q / float(d["packages"])
+    elif "pieces" in patch and "packages" not in patch and d.get("pieces") and q % float(d["pieces"]) == 0:
+        d["packages"] = q / float(d["pieces"])
+    elif "qty" in patch and "pieces" not in patch and "packages" not in patch and float(d.get("packages") or 0) == 1:
+        d["pieces"] = q
+    elif "qty" in patch and "pieces" not in patch and "packages" not in patch and d.get("pieces") \
+            and q % float(d["pieces"]) == 0:
+        d["packages"] = q / float(d["pieces"])
+    if ("packages" in patch or "pieces" in patch or "qty" in patch) and "remarks" not in patch:
+        d["remarks"] = re.sub(r"(CRATE - \d+ - |LID - \d+ - |CARTON BOX - )\d+( NOS)",
+                              lambda m: f"{m.group(1)}{int(d['packages'] or 0)}{m.group(2)}", d["remarks"] or "")
+    compute(d)
+    d["status"] = "draft"
+    cols = [c for c in d if c != "id"]
+    get_db().execute(f"UPDATE drinv_drafts SET {','.join(c + '=?' for c in cols)} WHERE id=?",
+                     tuple(d[c] for c in cols) + (did,))
+    get_db().commit()
+    recheck()
+    return _row(one("SELECT * FROM drinv_drafts WHERE id=?", (did,)))
+
+
+def number_from(start, ids):
+    """Give the drafts (in the order given) invoice numbers start, start+1, ... ('15885/26-27')."""
+    m = re.match(r"^(\d+)(/.*)?$", (start or "").strip())
+    if not m:
+        raise ValueError("Start number like 15885/26-27")
+    n, suf = int(m.group(1)), m.group(2) or ""
+    con = get_db()
+    for i, did in enumerate(ids):
+        con.execute("UPDATE drinv_drafts SET inv_no=?, status='draft' WHERE id=? AND status<>'sent'", (f"{n + i}{suf}", did))
+    con.commit()
+    recheck()
+
+
+def verify(ids, on=True):
+    recheck(ids)
+    con = get_db()
+    bad = []
+    for d in rows(f"SELECT * FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))})", tuple(ids)):
+        if d["status"] == "sent":
+            continue
+        if on and any(i["level"] == "error" for i in json.loads(d["issues"] or "[]")):
+            bad.append(d["inv_no"] or f"DR {d['dr_no']}")
+            continue
+        con.execute("UPDATE drinv_drafts SET status=?, verified_by=?, verified_at=? WHERE id=?",
+                    ("verified" if on else "draft", _user() if on else None, _now() if on else None, d["id"]))
+    con.commit()
+    return bad
+
+
+def remove(ids):
+    get_db().execute(f"DELETE FROM drinv_drafts WHERE status<>'sent' AND id IN ({','.join('?' * len(ids))})", tuple(ids))
+    get_db().commit()
+
+
+# ---------------------------------------------------------------- Tally
+def _x(s):
+    return html.escape(str(s if s is not None else ""), quote=False)
+
+
+def _tdate(iso):
+    return iso.replace("-", "")
+
+
+def _num(v):
+    v = float(v or 0)
+    return f"{v:.0f}" if v == int(v) else f"{v:g}"
+
+
+PARTY_TAGS = ("PARTYNAME", "PARTYMAILINGNAME", "BASICBUYERNAME", "PARTYGSTIN", "PARTYPINCODE", "STATENAME",
+              "COUNTRYOFRESIDENCE", "PLACEOFSUPPLY", "GSTREGISTRATIONTYPE", "CONSIGNEEGSTIN", "CONSIGNEEMAILINGNAME",
+              "CONSIGNEEPINCODE", "CONSIGNEESTATENAME", "CONSIGNEECOUNTRYNAME", "BASICBASEPARTYNAME", "CMPGSTIN",
+              "CMPGSTSTATE", "CMPGSTREGISTRATIONTYPE", "VCHGSTCLASS", "PERSISTEDVIEW", "VCHENTRYMODE")
+PARTY_LISTS = ("ADDRESS.LIST", "BASICBUYERADDRESS.LIST", "CONSIGNEEADDRESS.LIST")
+
+
+def _role(desc):
+    k = re.sub(r"[^A-Z]", "", (desc or "").upper())
+    if "PO" in k[:3] and ("NUMBER" in k or k.endswith("NO")):
+        return "po"
+    if "PICES" in k or "PIECES" in k:
+        return "pieces"
+    if "PACKAGE" in k:
+        return "packages"
+    if "TOTALNOS" in k or k == "NOS":
+        return "qty"
+    if "KG" in k:
+        return "kgs"
+    return "fixed"
+
+
+def learn(text):
+    """A Tally Day Book answer -> per plant, what its newest GST SALES NEW invoice to TAFE carries:
+    the user-defined fields (PO NUMBER, NO OF PICES, ...), party / consignee details, unit and godown."""
+    cfg = config()
+    party_plant = {v["party"].lower(): p for p, v in cfg["plants"].items()}
+    learned = {}
+    for m in re.finditer(r"<VOUCHER\b[^>]*>.*?</VOUCHER>", text, re.S):
+        v = m.group(0)
+        vt = re.search(r"<VOUCHERTYPENAME>(.*?)</VOUCHERTYPENAME>", v)
+        if not vt or html.unescape(vt.group(1)).strip() != cfg["vtype"]:
+            continue
+        pl = re.search(r"<PARTYLEDGERNAME>(.*?)</PARTYLEDGERNAME>", v)
+        plant = party_plant.get(html.unescape(pl.group(1)).strip().lower()) if pl else None
+        if not plant or plant in learned:
+            continue
+        head = re.sub(r"<(ALLINVENTORYENTRIES|LEDGERENTRIES|ALLLEDGERENTRIES|INVENTORYENTRIES)\.LIST>.*?"
+                      r"</\1\.LIST>", "", v, flags=re.S)
+        udf = []
+        for u in re.finditer(r"<(UDF:[A-Z0-9_]+)\.LIST([^>]*)>\s*<\1([^>]*)>(.*?)</\1>\s*</\1\.LIST>", head, re.S):
+            desc = re.search(r'DESC="`?([^"`]*)`?"', u.group(2) + u.group(3))
+            desc = desc.group(1) if desc else u.group(1)[4:]
+            udf.append(dict(tag=u.group(1), list_attrs=u.group(2), attrs=u.group(3), desc=desc,
+                            sample=html.unescape(u.group(4)), role=_role(desc)))
+        tags = {}
+        for t in PARTY_TAGS:
+            mm = re.search(rf"<{t}>(.*?)</{t}>", head, re.S)
+            if mm and mm.group(1).strip():
+                tags[t] = mm.group(0)
+        for t in PARTY_LISTS:
+            mm = re.search(rf"<{re.escape(t)}\b[^>]*>.*?</{re.escape(t)}>", head, re.S)
+            if mm:
+                tags[t] = mm.group(0)
+        unit = re.search(r"<BILLEDQTY>\s*[\d.]+\s*([A-Za-z.]+)\s*</BILLEDQTY>", v)
+        god = re.search(r"<GODOWNNAME>(.*?)</GODOWNNAME>", v)
+        od = re.search(r"<BASICORDERDATE>(\d{8})</BASICORDERDATE>", v)
+        po = re.search(r"<BASICPURCHASEORDERNO>(.*?)</BASICPURCHASEORDERNO>", v)
+        no = re.search(r"<VOUCHERNUMBER>(.*?)</VOUCHERNUMBER>", v)
+        learned[plant] = dict(udf=udf, tags=tags, unit=unit.group(1) if unit else cfg["unit"],
+                              godown=html.unescape(god.group(1)) if god else "",
+                              order_date=od.group(1) if od else "", order_po=po.group(1) if po else "",
+                              order_list=bool(re.search(r"<INVOICEORDERLIST\.LIST>", v)),
+                              from_inv=no.group(1) if no else "", at=_now())
+    if not learned:
+        return dict(ok=False, learned=[], message=f"No {cfg['vtype']} invoice to TAFE found in that Tally answer")
+    t = dict(cfg.get("templates") or {})
+    t.update(learned)
+    save_config(dict(templates=t))
+    return dict(ok=True, learned=sorted(learned),
+                message="Learned from " + ", ".join(f"{p} invoice {v['from_inv']}" for p, v in sorted(learned.items())))
+
+
+def learn_request():
+    """Day Book request for the last day Tally had GST SALES NEW invoices to each TAFE plant."""
+    from ..grin.services.tally import daybook_request
+    cfg = config()
+    days = set()
+    for p in cfg["plants"].values():
+        r = one("SELECT MAX(vdate) d FROM gp_tally_vouchers WHERE vtype=? AND party=?", (cfg["vtype"], p["party"]))
+        if r and r["d"]:
+            days.add(r["d"])
+    if not days:
+        days = {date.today().isoformat()}
+    reqs = []
+    for d in sorted(days):
+        dd = date.fromisoformat(d)
+        reqs.append(daybook_request(cfg["company"], dd, dd))
+    return reqs
+
+
+def voucher_xml(d, cfg=None):
+    cfg = cfg or config()
+    pl = cfg["plants"][d["plant"]]
+    tp = (cfg.get("templates") or {}).get(d["plant"]) or {}
+    unit = tp.get("unit") or cfg["unit"]
+    godown = tp.get("godown") or cfg.get("godown") or ""
+    sales = pl["sales"].get(_num(d["gst_rate"])) or pl["sales"].get(str(int(d["gst_rate"])))
+    if not sales:
+        raise ValueError(f"No sales ledger for GST {d['gst_rate']}% ({d['plant']})")
+    amt, total = d["amount"], d["total"]
+    qty = f" {_num(d['qty'])} {unit}"
+    vals = dict(po=d["po_no"], pieces=_num(d["pieces"]), packages=_num(d["packages"]), qty=_num(d["qty"]),
+                kgs=d.get("kgs") or "")
+    udf = ""
+    for u in tp.get("udf", []):
+        val = vals.get(u["role"]) if u["role"] != "fixed" else u.get("sample", "")
+        if val in (None, ""):
+            continue
+        udf += f"<{u['tag']}.LIST{u['list_attrs']}><{u['tag']}{u['attrs']}>{_x(val)}</{u['tag']}></{u['tag']}.LIST>\n"
+    party_tags = "\n".join((tp.get("tags") or {}).values())
+    order = ""
+    if tp.get("order_list", True):
+        od = tp.get("order_date") if tp.get("order_po") == d["po_no"] else ""
+        if not od:
+            h = one("SELECT po_date FROM po_headers WHERE po_no=?", (d["po_no"],))
+            pd = (h or {}).get("po_date") or ""
+            mm = re.match(r"(\d\d)\.(\d\d)\.(\d{4})", pd)
+            od = f"{mm.group(3)}{mm.group(2)}{mm.group(1)}" if mm else ""
+        order = (f"<INVOICEORDERLIST.LIST>{f'<BASICORDERDATE>{od}</BASICORDERDATE>' if od else ''}"
+                 f"<BASICPURCHASEORDERNO>{_x(d['po_no'])}</BASICPURCHASEORDERNO></INVOICEORDERLIST.LIST>")
+    batch = (f"<BATCHALLOCATIONS.LIST>{f'<GODOWNNAME>{_x(godown)}</GODOWNNAME>' if godown else ''}"
+             f"<BATCHNAME>Primary Batch</BATCHNAME><ORDERNO>{_x(d['po_no'])}</ORDERNO><AMOUNT>{amt:.2f}</AMOUNT>"
+             f"<ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY></BATCHALLOCATIONS.LIST>")
+    taxes = ""
+    for led, v in ((cfg["cgst"], d["cgst"]), (cfg["sgst"], d["sgst"]), (cfg["igst"], d["igst"])):
+        if v:
+            taxes += (f"<LEDGERENTRIES.LIST><LEDGERNAME>{_x(led)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>"
+                      f"<AMOUNT>{v:.2f}</AMOUNT></LEDGERENTRIES.LIST>\n")
+    ro = d["round_off"] or 0
+    if abs(ro) >= 0.005:
+        taxes += (f"<LEDGERENTRIES.LIST><LEDGERNAME>{_x(cfg['round_off'])}</LEDGERNAME>"
+                  f"<ISDEEMEDPOSITIVE>{'Yes' if ro < 0 else 'No'}</ISDEEMEDPOSITIVE>"
+                  f"<AMOUNT>{ro:.2f}</AMOUNT></LEDGERENTRIES.LIST>\n")
+    return f"""<VOUCHER VCHTYPE="{_x(cfg['vtype'])}" ACTION="Create" OBJVIEW="Invoice Voucher View">
+<DATE>{_tdate(d['inv_date'])}</DATE><EFFECTIVEDATE>{_tdate(d['inv_date'])}</EFFECTIVEDATE>
+<VOUCHERTYPENAME>{_x(cfg['vtype'])}</VOUCHERTYPENAME><VOUCHERNUMBER>{_x(d['inv_no'])}</VOUCHERNUMBER>
+<PARTYLEDGERNAME>{_x(pl['party'])}</PARTYLEDGERNAME>
+{party_tags}
+<NARRATION>{_x(d['remarks'])}</NARRATION><ISINVOICE>Yes</ISINVOICE>
+{'' if 'PERSISTEDVIEW' in (tp.get('tags') or {}) else '<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>'}
+{order}
+{udf}<LEDGERENTRIES.LIST><LEDGERNAME>{_x(pl['party'])}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+<ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>{-total:.2f}</AMOUNT>
+<BILLALLOCATIONS.LIST><NAME>{_x(d['inv_no'])}</NAME><BILLTYPE>New Ref</BILLTYPE><AMOUNT>{-total:.2f}</AMOUNT></BILLALLOCATIONS.LIST>
+</LEDGERENTRIES.LIST>
+<ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>{_x(d['item_name'])}</STOCKITEMNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+<RATE>{d['rate']:.2f}/{unit}</RATE><AMOUNT>{amt:.2f}</AMOUNT><ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY>
+{batch}
+<ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>{_x(sales)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>{amt:.2f}</AMOUNT></ACCOUNTINGALLOCATIONS.LIST>
+</ALLINVENTORYENTRIES.LIST>
+{taxes}</VOUCHER>"""
+
+
+def import_xml(d, cfg=None):
+    cfg = cfg or config()
+    comp = f"<SVCURRENTCOMPANY>{_x(cfg['company'])}</SVCURRENTCOMPANY>" if cfg.get("company") else ""
+    return (f"<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC>"
+            f"<REPORTNAME>Vouchers</REPORTNAME><STATICVARIABLES>{comp}</STATICVARIABLES></REQUESTDESC><REQUESTDATA>"
+            f'<TALLYMESSAGE xmlns:UDF="TallyUDF">\n{voucher_xml(d, cfg)}\n</TALLYMESSAGE></REQUESTDATA></IMPORTDATA>'
+            f"</BODY></ENVELOPE>")
+
+
+def send_plan(ids):
+    """Verified drafts -> [dict(id, inv_no, xml)] to post to Tally one by one."""
+    cfg = config()
+    recheck(ids)
+    out, skipped = [], []
+    for d in rows(f"SELECT * FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))}) ORDER BY inv_no", tuple(ids)):
+        if d["status"] != "verified":
+            skipped.append(d["inv_no"] or f"DR {d['dr_no']}")
+            continue
+        out.append(dict(id=d["id"], inv_no=d["inv_no"], xml=import_xml(d, cfg)))
+    missing = [p for p in {d["plant"] for d in rows(
+        f"SELECT plant FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))}
+        if p not in (cfg.get("templates") or {})]
+    return dict(items=out, skipped=skipped, need_learn=missing)
+
+
+def tally_result(did, text):
+    """Tally's answer to one import -> sent (CREATED 1) or the error kept on the draft."""
+    def n(tag):
+        m = re.search(rf"<{tag}>\s*(\d+)\s*</{tag}>", text or "")
+        return int(m.group(1)) if m else 0
+    errs = re.findall(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
+    created, altered = n("CREATED"), n("ALTERED")
+    con = get_db()
+    if (created or altered) and not n("ERRORS"):
+        con.execute("UPDATE drinv_drafts SET status='sent', sent_by=?, sent_at=?, tally_msg=? WHERE id=?",
+                    (_user(), _now(), "Created in Tally", did))
+        con.commit()
+        return dict(ok=True)
+    msg = "; ".join(html.unescape(e).strip() for e in errs) or (text or "").strip()[:300] or "Tally gave no answer"
+    con.execute("UPDATE drinv_drafts SET tally_msg=? WHERE id=?", (msg, did))
+    con.commit()
+    return dict(ok=False, error=msg)

@@ -8,6 +8,7 @@
   /api/grin/...                          GRIN & Payments
   /api/pay/...                           Payments (payment marking + sales GRN marking)
   /api/masters/...                       Masters: TAFE Channel sync (8 am / 9 pm), PO master
+  /api/drinv/...                         DR -> Invoice: drafts from Delivery Requests, sent to Tally
 """
 from . import admin, hub, login, masters  # noqa: F401
 from ..supp import handlers as _supp  # noqa: F401
@@ -16,3 +17,4 @@ from ..dqms import handlers as _dqms  # noqa: F401
 from ..grin import handlers as _grin  # noqa: F401
 from ..pay import handlers as _pay  # noqa: F401
 from ..pocheck import handlers as _pocheck  # noqa: F401
+from ..drinv import handlers as _drinv  # noqa: F401

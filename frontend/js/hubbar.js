@@ -6,7 +6,7 @@
 (function () {
     const path = location.pathname;
     const here = path.startsWith('/supp') ? 'supp' : path.startsWith('/chep') ? 'chep' : path.startsWith('/dqms') ? 'dqms'
-        : path.startsWith('/grin') ? 'grin' : path.startsWith('/pocheck') ? 'pocheck' : path.startsWith('/pay') ? 'pay' : path.startsWith('/admin') ? 'admin' : 'hub';
+        : path.startsWith('/grin') ? 'grin' : path.startsWith('/pocheck') ? 'pocheck' : path.startsWith('/drinv') ? 'drinv' : path.startsWith('/pay') ? 'pay' : path.startsWith('/admin') ? 'admin' : 'hub';
     const ME = window.HUB_USER || { access: null, admin: false, user: '' };
     const can = k => !ME.access || ME.access.includes(k);
     const ic = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -22,6 +22,7 @@
         ['drop', '/#drop', 'Drop files', '#475569', ic('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'), 'drop'],
         ['items', '/#items', 'Follow-ups', '#b45309', ic('<path d="M9 11l3 3L22 4"/><line x1="3" y1="6" x2="7" y2="6"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="3" y1="18" x2="7" y2="18"/>'), 'items'],
         ['pocheck', '/pocheck/', 'PO Price Check', '#0f766e', ic('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 15l2.5 2.5L16 12"/>')],
+        ['drinv', '/drinv/', 'DR → Invoice', '#a16207', ic('<rect x="3" y="4" width="8" height="16" rx="1"/><path d="M14 12h6"/><polyline points="17 9 20 12 17 15"/><line x1="5.5" y1="9" x2="8.5" y2="9"/><line x1="5.5" y1="13" x2="8.5" y2="13"/>')],
         ['masters', '/#masters', 'Masters', '#334155', ic('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'), 'masters'],
         ['admin', '/admin/', 'Admin', '#9f1239', ic('<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><circle cx="12" cy="11" r="3"/>')],
     ].filter(a => a[0] === 'admin' ? (ME.admin && ME.login) : can(a[0]));
