@@ -238,9 +238,16 @@ async function sendToTally() {
     loadDrafts();
 }
 
-// Refresh: clear the upload box, the Tally log and the ticks, back to today's date and the open invoices,
-// so the next batch of DRs can be uploaded on a clean page. Drafts already saved stay in the list.
+// Refresh: start a new batch. The drafts not yet sent to Tally are removed (after asking), the upload box,
+// Tally log and ticks are cleared, so the page is empty for the next DRs. Invoices already sent stay under
+// "Sent to Tally".
 async function refreshPage() {
+    const open = (DI.data ? DI.data.drafts : []).filter(d => d.status !== 'sent').map(d => d.id);
+    if (open.length) {
+        if (!await confirmBox('Start a new batch?', `The ${open.length} invoice(s) not sent to Tally will be removed from this page. ` +
+            'Invoices already sent to Tally are kept.')) return;
+        try { await apiJson('/api/drinv/delete', 'POST', { ids: open }); } catch (e) { return showToast(e.message, 'danger'); }
+    }
     document.getElementById('upload-msgs').innerHTML = '';
     const log = document.getElementById('di-log');
     log.textContent = ''; log.style.display = 'none';
@@ -250,7 +257,7 @@ async function refreshPage() {
     DI.ticked.clear();
     DI.filter = 'open';
     await loadDrafts();
-    showToast('Refreshed — upload the new DRs', 'success');
+    showToast('Page cleared — upload the new DRs', 'success');
 }
 
 document.getElementById('inv-date').value = todayIso();
