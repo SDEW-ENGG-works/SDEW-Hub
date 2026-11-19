@@ -238,5 +238,20 @@ async function sendToTally() {
     loadDrafts();
 }
 
+// Refresh: clear the upload box, the Tally log and the ticks, back to today's date and the open invoices,
+// so the next batch of DRs can be uploaded on a clean page. Drafts already saved stay in the list.
+async function refreshPage() {
+    document.getElementById('upload-msgs').innerHTML = '';
+    const log = document.getElementById('di-log');
+    log.textContent = ''; log.style.display = 'none';
+    document.querySelectorAll('input[type=file]').forEach(i => { i.value = ''; });
+    document.getElementById('inv-date').value = todayIso();
+    document.getElementById('start-no').value = '';
+    DI.ticked.clear();
+    DI.filter = 'open';
+    await loadDrafts();
+    showToast('Refreshed — upload the new DRs', 'success');
+}
+
 document.getElementById('inv-date').value = todayIso();
 loadDrafts();
