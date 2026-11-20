@@ -113,7 +113,9 @@ class Connection:
         body = json.dumps({"requests": requests + [{"type": "close"}]}).encode("utf-8")
         headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json",
                    "Connection": "keep-alive"}
-        for attempt in (1, 2):
+        import time
+        tries = 4 if self._safe_again(requests) else 2
+        for attempt in range(1, tries + 1):
             try:
                 c = self._http()
                 c.request("POST", self._path, body=body, headers=headers)
@@ -131,9 +133,37 @@ class Connection:
                 except Exception:  # noqa: BLE001
                     pass
                 self._conn = None
-                if attempt == 2:
-                    raise TursoError(f"Turso not reachable: {e}")
+                if attempt == tries:
+                    raise TursoError(f"Turso not reachable: {e} (tried {tries} times)")
+                if attempt >= 2:
+                    time.sleep(3 * attempt)        # Turso slow for a moment: wait 6 s, 9 s before trying again
         return data["results"][:len(requests)]
+
+    # A request that times out may still have been done by Turso. It is sent again (after a short wait) only
+    # when doing it twice gives the same result: reads, upserts (INSERT OR REPLACE / IGNORE, ... ON CONFLICT),
+    # DELETE, CREATE. A plain INSERT or an UPDATE like n = n + 1 is tried once more at once (lost connection)
+    # but not again after that.
+    @staticmethod
+    def _safe_again(requests):
+        import re
+        for r in requests:
+            sql = ((r.get("stmt") or {}).get("sql") or "").lstrip().upper()
+            if not sql:
+                continue
+            if sql.startswith(("SELECT", "PRAGMA", "CREATE", "DELETE", "INSERT OR REPLACE", "INSERT OR IGNORE",
+                               "REPLACE")):
+                continue
+            if sql.startswith("INSERT") and "ON CONFLICT" in sql:
+                continue
+            if sql.startswith("UPDATE") and not re.search(r"=\s*\w+\s*[-+*/]", sql):
+                continue
+            return False
+        return True
+
+    # Statements wait in the queue until a SELECT or commit. Thousands of them in one request (e.g. a month
+    # of 2,300 GRIN lines, each an upsert) made Turso take longer than the read time-out ("Turso not
+    # reachable: The read operation timed out"). The queue now goes to Turso every QUEUE_MAX statements.
+    QUEUE_MAX = 200
 
     def _flush(self):
         if not self._queue:
@@ -160,6 +190,8 @@ class Connection:
         self._queue.append((cur, {"type": "execute", "stmt": stmt}))
         if sql.lstrip()[:6].upper() in ("SELECT", "PRAGMA"):
             cur._res()
+        elif len(self._queue) >= self.QUEUE_MAX:
+            self._flush()
         return cur
 
     # executemany: thousands of rows (e.g. every Tally ledger and its balance) used to go to Turso as one

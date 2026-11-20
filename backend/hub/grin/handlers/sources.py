@@ -44,13 +44,24 @@ def sources(req):
         sales=_one(f"SELECT COUNT(DISTINCT voucher) n, MIN(inv_date) first, MAX(inv_date) last FROM sales_lines "
                    f"WHERE party IN ({ph})", parties),
         grin=_grin_summary(grin_portal),
-        payments=_one("SELECT COUNT(*) n, COUNT(DISTINCT pv) vouchers, MIN(pv_date) first, MAX(pv_date) last "
-                      "FROM gp_pay_lines"),
+        payments=_pay_summary(),
         register=_one("SELECT COUNT(*) n, SUM(pv<>'') marked, MAX(inv_date) last, MAX(file) file, MAX(loaded_at) loaded "
                       "FROM gp_register"),
         files=rows("SELECT * FROM gp_pay_files ORDER BY id DESC LIMIT 50"),
         smtp=dict(ready=smtp_settings()["ready"], host=smtp_settings()["host"], sender=smtp_settings()["sender"]),
         dates=st.data_dates())
+
+
+def _pay_summary():
+    """TAFE payment lines: 'last' is the date the payment data covers - the end of the newest fetched period,
+    even when TAFE had no new voucher after an earlier date (a fetch up to 20/11 with the last voucher on 11/11
+    still means 'checked up to 20/11'). last_voucher keeps the date of the newest voucher itself."""
+    p = _one("SELECT COUNT(*) n, COUNT(DISTINCT pv) vouchers, MIN(pv_date) first, MAX(pv_date) last FROM gp_pay_lines")
+    f = _one("SELECT MAX(period_to) to_, MAX(loaded_at) loaded FROM gp_pay_files WHERE kind='Payments'")
+    p["last_voucher"] = p.get("last")
+    p["last"] = max(p.get("last") or "", f.get("to_") or "") or None
+    p["loaded"] = f.get("loaded")
+    return p
 
 
 def _masters_status():

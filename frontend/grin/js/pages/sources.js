@@ -30,7 +30,7 @@ async function loadSources(keepTallyLog) {
             ${g.portal.remote ? `<dt>Done by</dt><dd>${g.portal.method === 'pc' ? pcAgent(g.portal.agent) : 'this website (no browser) - start the SDEW PC hub to let the PC do it'}</dd>` : ''}`;
         showGrin(g.portal);
         document.getElementById('pay-kv').innerHTML = `
-            <dt>TAFE payment lines</dt><dd>${s.payments.n ? `${inr(s.payments.n, 0)} lines in ${s.payments.vouchers} vouchers, ${dmy(s.payments.first)} to <b>${dmy(s.payments.last)}</b>` : 'none — drop a PaymentDetailsExport'}</dd>
+            <dt>TAFE payment lines</dt><dd>${s.payments.n ? `${inr(s.payments.n, 0)} lines in ${s.payments.vouchers} vouchers, ${dmy(s.payments.first)} to <b>${dmy(s.payments.last)}</b>${s.payments.last_voucher && s.payments.last_voucher !== s.payments.last ? ` <span class="muted">(checked up to this date; last TAFE voucher ${dmy(s.payments.last_voucher)})</span>` : ''}` : 'none — drop a PaymentDetailsExport'}</dd>
             <dt>Invoice register</dt><dd>${s.register.n ? `${inr(s.register.n, 0)} invoices, ${inr(s.register.marked, 0)} marked paid (up to ${dmy(s.register.last)})` : 'none — optional, gives invoice values and older payments'}</dd>`;
         document.getElementById('pay-files').innerHTML = s.files.length ? s.files.map(f => `<tr><td>${esc(when(f.loaded_at))}</td>
             <td><span class="status-badge sent">${esc(f.kind)}</span></td><td>${esc(f.name)}</td>
