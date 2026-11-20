@@ -66,6 +66,54 @@ def _log(msg):
     STATUS["log"].append(f"{datetime.now():%H:%M:%S}  {msg}")
     STATUS["log"] = STATUS["log"][-60:]
     print("[GRIN sync]", msg)
+    _persist()
+
+
+# ---------------------------------------------------------------- the website's own fetch, seen by every page
+# On Vercel the fetch runs inside one request, in one server instance. STATUS lives only in that instance's
+# memory, so the GRIN page (whose refreshes land on other instances) kept showing the PC's last job (e.g. an
+# old "Stopped: Turso not reachable" from 16 Nov) and "A GRIN sync is already running". The website's fetch
+# now writes its status to the shared database after every step; the pages read it from there.
+SITE_KEY = "grin.site_status"
+SITE_STALE = 240          # no new step for 4 minutes: the request was cut off (Vercel time limit)
+
+
+def _persist():
+    if not config.ON_VERCEL:
+        return
+    try:
+        from ...db import set_setting
+        set_setting(SITE_KEY, dict(STATUS, ts=time.time()))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def site_status():
+    """The website's last fetch (shape of STATUS) or None. A 'running' one with no step for SITE_STALE s is over."""
+    try:
+        from ...db import get_setting
+        st = get_setting(SITE_KEY)
+    except Exception:  # noqa: BLE001
+        return None
+    if not st:
+        return None
+    if st.get("running") and time.time() - (st.get("ts") or 0) > SITE_STALE:
+        st = dict(st, running=False, finished=st.get("finished") or "",
+                  error=st.get("error") or "The website stopped before the end (time limit) - fetch fewer months, "
+                                           "or start the SDEW PC hub to let the PC do it")
+        st["log"] = list(st.get("log") or []) + ["Stopped: the website's time limit was reached"]
+    st.pop("ts", None)
+    return st
+
+
+def newest_status(pc_status):
+    """Website: show whichever fetch started last - the PC's job or the website's own."""
+    site = site_status()
+    if not site:
+        return pc_status
+    if not pc_status or not pc_status.get("started") or (site.get("started") or "") >= (pc_status.get("started") or ""):
+        return dict(pc_status or {}, **site, remote=False)
+    return pc_status
 
 
 def record_fetch(d1, d2):
@@ -138,6 +186,10 @@ def start(d1, d2, headed=False, window=None):
     with _lock:
         if STATUS["running"]:
             return False
+        if config.ON_VERCEL:
+            other = site_status()
+            if other and other.get("running"):
+                return False
         STATUS.update(running=True, log=[], started=datetime.now().isoformat(timespec="seconds"), finished="", error="")
         SHOT.update(ts=0.0, jpg=None)
     # "Show the browser" ticked: always the real browser (so it opens on this PC's screen), even if
@@ -152,6 +204,7 @@ def start(d1, d2, headed=False, window=None):
     # the live view only (window=False): nobody is sitting at the PC then.
     win = headed if window is None else window
     if config.ON_VERCEL:
+        _persist()
         target(d1, d2, win)
     else:
         threading.Thread(target=target, args=(d1, d2, win), daemon=True).start()
@@ -189,6 +242,7 @@ def _run_http(d1, d2, headed=False):
     finally:
         STATUS["running"] = False
         STATUS["finished"] = datetime.now().isoformat(timespec="seconds")
+        _persist()
 
 
 def _run(d1, d2, headed):
@@ -267,3 +321,4 @@ def _run(d1, d2, headed):
     finally:
         STATUS["running"] = False
         STATUS["finished"] = datetime.now().isoformat(timespec="seconds")
+        _persist()

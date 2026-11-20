@@ -245,10 +245,18 @@ async function grinFetch() {
     if (document.getElementById('grin-headed').checked) openGrinWindow();
     document.getElementById('btn-grin').disabled = true;
     showToast('Fetching GRIN from TAFE Channel…', 'info');
+    // While the website fetches inside the request, show its progress (the server writes each step to the
+    // shared database) instead of the old log of the last fetch.
+    showGrin({ available: true, running: true, log: [`${new Date().toLocaleTimeString('en-GB')}  Starting…`] });
+    const live = setInterval(async () => {
+        try { const st = await api('/api/supp/grin/sync'); if (st.running) showGrin(Object.assign({ available: true }, st)); }
+        catch (e) { /* keep waiting for the fetch itself */ }
+    }, 3000);
     try {
         const r = await apiJson('/api/supp/grin/sync', 'POST', {
             from: picked.from, to: picked.to,
             headed: document.getElementById('grin-headed').checked });
+        clearInterval(live);
         if (r.done && _grinWin && !_grinWin.closed) {      // the website fetched it itself: no browser to show
             _grinWin.close();
             showToast('Fetched without a browser - the SDEW PC hub is not running. Start it (start.bat) to watch the browser.', 'info', 9000);
@@ -262,8 +270,9 @@ async function grinFetch() {
         }
         pollGrin();
     } catch (e) {
-        document.getElementById('btn-grin').disabled = false;
+        clearInterval(live);
         showToast(e.message, 'danger', 8000);
+        pollGrin();             // the request was cut off or refused: show the real state from the server
     }
 }
 

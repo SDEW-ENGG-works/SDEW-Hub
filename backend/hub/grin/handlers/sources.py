@@ -84,7 +84,7 @@ def _grin_summary(grin_portal):
 def _grin_portal(grin_portal):
     if config.ON_VERCEL:
         a = pc_jobs.agent_info()
-        return dict(pc_jobs.status("grin_fetch"), method="pc" if a and a["online"] else "http")
+        return dict(grin_portal.newest_status(pc_jobs.status("grin_fetch")), method="pc" if a and a["online"] else "http")
     return dict(available=grin_portal.available(), method=grin_portal.method(), **grin_portal.STATUS)
 
 

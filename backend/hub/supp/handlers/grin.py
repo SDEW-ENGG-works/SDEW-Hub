@@ -16,7 +16,7 @@ def summary(req):
     plants = rows("SELECT plant, COUNT(*) lines FROM grin_lines GROUP BY plant ORDER BY lines DESC")
     if config.ON_VERCEL:
         a = pc_jobs.agent_info()
-        portal = dict(pc_jobs.status("grin_fetch"), method="pc" if a and a["online"] else "http")
+        portal = dict(grin_portal.newest_status(pc_jobs.status("grin_fetch")), method="pc" if a and a["online"] else "http")
     else:
         portal = dict(available=grin_portal.available(), method=grin_portal.method(), **grin_portal.STATUS)
     return dict(months=months, plants=plants, portal=portal)
@@ -48,7 +48,7 @@ def sync(req):
             except RuntimeError as e:
                 raise ApiError(str(e))
     if not grin_portal.start(d1, d2, headed=bool(body.get("headed"))):
-        raise ApiError("A GRIN sync is already running")
+        raise ApiError("A GRIN fetch is already running - wait for it to finish (the log below shows it)")
     st = dict(grin_portal.STATUS)          # STATUS has its own 'started' (the time) - do not pass it twice
     return dict(st, ok=True, done=not st["running"])
 
@@ -56,7 +56,7 @@ def sync(req):
 @route("GET", r"/api/grin/sync")
 def sync_status(req):
     if config.ON_VERCEL:
-        return pc_jobs.status("grin_fetch")
+        return grin_portal.newest_status(pc_jobs.status("grin_fetch"))
     return grin_portal.STATUS
 
 
