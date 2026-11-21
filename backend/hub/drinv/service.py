@@ -643,8 +643,12 @@ def voucher_xml(d, cfg=None):
             od = f"{mm.group(3)}{mm.group(2)}{mm.group(1)}" if mm else ""
         order = (f"<INVOICEORDERLIST.LIST>{f'<BASICORDERDATE>{od}</BASICORDERDATE>' if od else ''}"
                  f"<BASICPURCHASEORDERNO>{_x(d['po_no'])}</BASICPURCHASEORDERNO></INVOICEORDERLIST.LIST>")
+    # No <ORDERNO> on the item line: that links the item to a Tally SALES ORDER of that name. SDEW does not use
+    # sales orders, so Tally then took PO 1030000676 as an order with a pending elbow at 610.83 and offered that
+    # line (and its rate) on every new MDU invoice typed by hand. The PO stays in the invoice's Order No
+    # (INVOICEORDERLIST) and the PO NUMBER field, as on the office's own invoices.
     batch = (f"<BATCHALLOCATIONS.LIST>{f'<GODOWNNAME>{_x(godown)}</GODOWNNAME>' if godown else ''}"
-             f"<BATCHNAME>Primary Batch</BATCHNAME><ORDERNO>{_x(d['po_no'])}</ORDERNO><AMOUNT>{amt:.2f}</AMOUNT>"
+             f"<BATCHNAME>Primary Batch</BATCHNAME><AMOUNT>{amt:.2f}</AMOUNT>"
              f"<ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY></BATCHALLOCATIONS.LIST>")
     taxes = ""
     for led, v in ((cfg["cgst"], d["cgst"]), (cfg["sgst"], d["sgst"]), (cfg["igst"], d["igst"])):
