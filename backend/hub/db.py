@@ -170,7 +170,9 @@ CREATE TABLE IF NOT EXISTS drinv_drafts(
     qty REAL, pieces REAL, packages REAL, kgs TEXT, rate REAL, rate_po REAL, amount REAL, cgst REAL, sgst REAL,
     igst REAL, round_off REAL, total REAL, remarks TEXT, status TEXT, issues TEXT, file_name TEXT,
     created_by TEXT, created_at TEXT, verified_by TEXT, verified_at TEXT, sent_by TEXT, sent_at TEXT,
-    tally_msg TEXT, last_rate REAL, last_inv TEXT, UNIQUE(dr_no, part));
+    tally_msg TEXT, last_rate REAL, last_inv TEXT, title TEXT, UNIQUE(dr_no, part));
+CREATE TABLE IF NOT EXISTS drinv_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, action TEXT, detail TEXT, invoices TEXT);
 CREATE TABLE IF NOT EXISTS m_plants(
     code TEXT PRIMARY KEY, name TEXT, seen_at TEXT);
 -- every master refresh: the 8 am / 9 pm runs (slot 'yyyy-mm-dd HH:MM') and Refresh now (slot 'manual ...')
@@ -265,6 +267,7 @@ CREATE TABLE IF NOT EXISTS wipe_rows(
 # columns added after the first version: (table, column, type)
 MIGRATIONS = [
     ("po_headers", "source", "TEXT"),
+    ("drinv_drafts", "title", "TEXT"),
     ("run_lines", "old_src", "TEXT"),
     ("batches", "data", "BLOB"),
     ("chep_runs", "leap_status", "TEXT"), ("chep_runs", "leap_result", "TEXT"), ("chep_runs", "leap_at", "TEXT"),

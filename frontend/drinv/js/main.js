@@ -16,6 +16,7 @@ async function loadDrafts(recheck = false) {
     if (!sn.value || recheck) sn.value = DI.data.next_no || '';
     renderConfig(DI.data.config);
     render();
+    renderHistory();
     if (recheck) showToast('Checked again against Tally and the PO data', 'success');
 }
 
@@ -27,7 +28,8 @@ function renderConfig(c) {
     const L = c.learned || {};
     document.getElementById('t-learned').innerHTML = Object.keys(c.plants).map(p => L[p]
         ? `<li>✅ <b>${esc(p)}</b>: format learned from invoice ${esc(L[p].from_inv)} — fields ${esc(L[p].fields.join(', ') || 'none')}</li>`
-        : `<li>⚠️ <b>${esc(p)}</b>: format not learned yet (done automatically before the first send)</li>`).join('');
+        : `<li>⚠️ <b>${esc(p)}</b>: format not learned yet (done automatically before the first send)</li>`).join('') +
+        (c.last_learn ? `<li class="di-small">Last try: ${esc(c.last_learn)}</li>` : '');
 }
 
 function shown() {
@@ -56,11 +58,12 @@ function render() {
     const ed = (d, k, v, cls = '', w = '') => d.status === 'sent' ? esc(v ?? '')
         : `<input class="ed ${cls}" ${w} value="${esc(v ?? '')}" onchange="edit(${d.id}, '${k}', this.value)">`;
     t.innerHTML = `<thead><tr><th><input type="checkbox" ${allOn ? 'checked' : ''} onchange="tickAll(this.checked)"></th>
-        <th>Invoice no</th><th>Date</th><th>Plant / DR / PO</th><th>Part · Tally item</th><th>Qty</th><th>Pkgs</th><th>Pcs</th>
-        <th>Rate</th><th>GST</th><th>Taxable</th><th>Tax</th><th>Total</th><th>Remarks</th><th>Status</th></tr></thead><tbody>` +
+        <th>Invoice no</th><th>Date</th><th>Plant / DR / PO</th><th>Part · Tally item</th>
+        <th title="TOTAL NOS in Tally">Total Nos</th><th title="NO OF PACKAGES in Tally">No of Packages</th>
+        <th title="NO OF PICES in Tally">No of Pieces</th><th title="TOTAL KGS in Tally">Total Kgs</th><th>Title</th>
+        <th>Rate</th><th>GST</th><th>Taxable</th><th>Total</th><th>Remarks</th><th>Status</th></tr></thead><tbody>` +
         ds.map(d => {
             const errs = d.issues.filter(i => i.level === 'error');
-            const tax = (d.cgst || 0) + (d.sgst || 0) + (d.igst || 0);
             return `<tr class="${d.status}">
             <td><input type="checkbox" ${DI.ticked.has(d.id) ? 'checked' : ''} onchange="tick(${d.id}, this.checked)"></td>
             <td style="min-width:110px">${ed(d, 'inv_no', d.inv_no, d.inv_no ? '' : 'miss', 'placeholder="15885/26-27"')}</td>
@@ -69,15 +72,16 @@ function render() {
             <td style="min-width:200px"><b>${esc(d.part)}</b> <span class="di-small">${esc(d.descr || '')}</span>
                 ${ed(d, 'item_name', d.item_name, d.item_name ? '' : 'miss', 'placeholder="Tally stock item name"')}
                 <div class="di-small">DR: ${num(d.dr_req)} ${esc(d.bin || '')} × ${num(d.dr_size)} = ${num(d.dr_qty)}</div></td>
-            <td style="width:70px">${ed(d, 'qty', num(d.qty), 'num')}</td>
-            <td style="width:56px">${ed(d, 'packages', num(d.packages), 'num')}</td>
-            <td style="width:56px">${ed(d, 'pieces', num(d.pieces), 'num')}</td>
+            <td style="width:70px">${ed(d, 'qty', num(d.qty), 'num' + (d.qty ? '' : ' miss'))}</td>
+            <td style="width:70px">${ed(d, 'packages', num(d.packages), 'num' + (d.packages ? '' : ' miss'))}</td>
+            <td style="width:70px">${ed(d, 'pieces', num(d.pieces), 'num' + (d.pieces ? '' : ' miss'))}</td>
+            <td style="width:64px">${ed(d, 'kgs', d.kgs, 'num', 'placeholder="—"')}</td>
+            <td style="width:80px">${ed(d, 'title', d.title ?? 'KANBAN')}</td>
             <td style="width:84px">${ed(d, 'rate', d.rate == null ? '' : (+d.rate).toFixed(2), 'num' + (d.rate ? '' : ' miss'))}
                 ${d.rate_po != null && d.rate != null && Math.abs(d.rate - d.rate_po) >= .005 ? `<div class="di-small">PO ${n2(d.rate_po)}</div>` : ''}</td>
-            <td style="width:52px">${ed(d, 'gst_rate', num(d.gst_rate), 'num')}<div class="di-small">${d.igst ? 'IGST' : 'C+S'}</div></td>
+            <td style="min-width:150px">${gstCell(d)}</td>
             <td class="num">${n2(d.amount)}</td>
-            <td class="num">${n2(tax)}${d.round_off ? `<div class="di-small">RO ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
-            <td class="num"><b>${n2(d.total)}</b></td>
+            <td class="num"><b>${n2(d.total)}</b>${d.round_off ? `<div class="di-small">Round off ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
             <td class="rem">${ed(d, 'remarks', d.remarks)}</td>
             <td><span class="di-b ${d.status}">${d.status === 'sent' ? 'In Tally' : d.status === 'verified' ? 'Verified' : 'Draft'}</span>
                 ${d.verified_by && d.status !== 'draft' ? `<div class="di-small">by ${esc(d.verified_by)}</div>` : ''}
@@ -88,6 +92,25 @@ function render() {
         }).join('') + '</tbody>';
     const sum = ds.reduce((a, d) => a + (d.total || 0), 0);
     document.getElementById('di-foot').textContent = `${ds.length} invoice(s), total ₹${inr(sum)}. Ticked: ${DI.ticked.size}.`;
+}
+
+// GST shown the way the invoice prints it: CGST 2.5 % + SGST 2.5 % (MDU, Tamil Nadu) or IGST 5 % (DBR)
+function gstCell(d) {
+    const g = +d.gst_rate || 0;
+    const rate = d.status === 'sent' ? `${num(g)} %` :
+        `<input class="ed num" style="width:46px;display:inline-block" value="${num(g)}" onchange="edit(${d.id}, 'gst_rate', this.value)"> %`;
+    const lines = d.igst
+        ? `<div>IGST ${num(g)}% <b>₹${n2(d.igst)}</b></div>`
+        : `<div>CGST ${num(g / 2)}% <b>₹${n2(d.cgst)}</b></div><div>SGST ${num(g / 2)}% <b>₹${n2(d.sgst)}</b></div>`;
+    return `<div class="di-small">GST ${rate}</div>${lines}`;
+}
+
+function renderHistory() {
+    const h = (DI.data && DI.data.history) || [];
+    document.getElementById('di-history').innerHTML = h.length ? `<thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead><tbody>` +
+        h.map(x => `<tr><td style="white-space:nowrap">${esc(when(x.at))}</td><td>${esc(x.user || '')}</td><td><b>${esc(x.action)}</b></td>
+            <td>${esc(x.detail || '')}${x.invoices && x.invoices.length > 1 ? `<div class="di-small">${esc(x.invoices.join(', '))}</div>` : ''}</td></tr>`).join('') + '</tbody>'
+        : '<tr><td class="muted" style="padding:.8rem">Nothing yet.</td></tr>';
 }
 
 function tick(id, on) { on ? DI.ticked.add(id) : DI.ticked.delete(id); render(); }
@@ -147,9 +170,17 @@ async function giveNumbers() {
 
 async function verify(on) {
     const ids = tickedIds(); if (!ids.length) return;
+    let force = false;
+    const sent = shown().filter(d => ids.includes(d.id) && d.status === 'sent').map(d => d.inv_no);
+    if (!on && sent.length) {
+        if (!await confirmBox('Take back invoices already in Tally?', `${sent.join(', ')} ${sent.length > 1 ? 'are' : 'is'} marked as sent. ` +
+            'Delete them in Tally first (Alt+D), then they can be corrected here and sent again.')) return;
+        force = true;
+    }
     try {
-        DI.data = await apiJson('/api/drinv/verify', 'POST', { ids, on });
+        DI.data = await apiJson('/api/drinv/verify', 'POST', { ids, on, force });
         render();
+        renderHistory();
         const bad = DI.data.not_verified || [];
         showToast(bad.length ? `Not verified (fix the red points first): ${bad.join(', ')}` : (on ? 'Verified' : 'Back to draft'),
             bad.length ? 'danger' : 'success', bad.length ? 9000 : 3000);
@@ -192,13 +223,17 @@ async function learnFromTally(quiet = false) {
     try {
         const { requests } = await api('/api/drinv/learn-request');
         let msg = '', ok = false;
+        const want = Object.keys(DI.data.config.plants), got = new Set();
         for (const x of requests) {
-            logLine('Reading the last TAFE invoices from Tally…');
+            const day = (x.match(/<SVFROMDATE[^>]*>([^<]+)</) || [])[1] || '';
+            logLine(`Reading TAFE invoices of ${day} from Tally…`);
             const text = await tallyCall(x);
             const gz = await gzipB64(text);
             const r = await apiJson('/api/drinv/learn', 'POST', gz ? { gz } : { text });
             msg = r.message; ok = ok || r.ok;
+            (r.learned || []).forEach(p => got.add(p));
             logLine(r.message);
+            if (want.every(p => got.has(p))) break;
         }
         if (!quiet) showToast(msg, ok ? 'success' : 'danger', 7000);
         await loadDrafts();
@@ -222,6 +257,10 @@ async function sendToTally() {
             await learnFromTally(true);
             plan = await apiJson('/api/drinv/send-plan', 'POST', { ids });
         }
+        if (plan.no_fields.length && !await confirmBox('Tally fields will be empty',
+            `The invoice format of ${plan.no_fields.join(', ')} is not learned from Tally, so NO OF PICES, NO OF PACKAGES, ` +
+            'TOTAL NOS, Title and TOTAL KGS would reach Tally empty. Press Cancel and use "Learn invoice format from Tally" ' +
+            '(see the message there), or Yes to send anyway and fill them in Tally.')) { btn.disabled = false; return; }
         if (plan.skipped.length) logLine(`Not verified, skipped: ${plan.skipped.join(', ')}`);
         let ok = 0, bad = 0;
         for (const it of plan.items) {

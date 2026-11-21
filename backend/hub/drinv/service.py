@@ -13,19 +13,44 @@ CFG_KEY = "drinv.config"
 # Ledgers as used in Tally's GST SALES NEW vouchers for TAFE (read from the pulled Tally books)
 DEFAULT = dict(
     vtype="GST SALES NEW", round_off="Round Off", cgst="Output CGST", sgst="Output SGST", igst="Output IGST",
-    unit="QTY", godown="FINISHED GOODS", company="",
+    unit="QTY", godown="FINISHED GOODS", company="", last_learn="",
     plants=dict(
         MDU=dict(party="Tractors and Farm Equpment Ltd", inter=False,
-                 sales={"5": "GST SALES @ 5%", "18": "GST Sales 18%"}),
+                 sales={"5": "GST SALES @ 5%", "18": "GST Sales 18%"},
+                 address=["No : 10/205, Kalladipatti P.O,", "Dindugal ( Dist )", "Madurai - 624201"],
+                 state="Tamil Nadu", pincode="624201", gstin="33AAACT2761Q1Z1"),
         DBR=dict(party="Tractors and Farm Equipment Ltd - B", inter=True,
-                 sales={"5": "GST SALES INTERSTATE @ 5%", "18": "GST SALES INTERSTATE @ 18%"}),
+                 sales={"5": "GST SALES INTERSTATE @ 5%", "18": "GST SALES INTERSTATE @ 18%"},
+                 address=["Plot No : 1, Kiadb Industrial Area,", "Doddabalapur,", "Bangalore  - 561203"],
+                 state="Karnataka", pincode="561203", gstin="29AAACT2761Q1ZQ"),
     ),
     templates={},       # per plant: what a real invoice in Tally carries (UDF fields, party details) - learn()
 )
 # HSN 73181500 (banjo bolts) and 84099941 (breather) are 18 %; tractor parts 8708xxxx are 5 %
 GST18 = {"0714224M02", "0714315M03", "1812P03001"}
 EWAY_LIMIT = 50000
-EDITABLE = ("inv_no", "inv_date", "qty", "pieces", "packages", "kgs", "rate", "remarks", "item_name", "gst_rate")
+EDITABLE = ("inv_no", "inv_date", "qty", "pieces", "packages", "kgs", "rate", "remarks", "item_name", "gst_rate",
+            "title")
+DEFAULT_TITLE = "KANBAN"
+
+
+def log_event(action, detail, invoices=None):
+    """History box: who uploaded / verified / sent what, and when."""
+    try:
+        get_db().execute("INSERT INTO drinv_log(at, user, action, detail, invoices) VALUES(?,?,?,?,?)",
+                         (_now(), _user(), action, detail, json.dumps(invoices or [])))
+        get_db().commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def history_log(limit=200):
+    out = []
+    for r in rows("SELECT * FROM drinv_log ORDER BY id DESC LIMIT ?", (limit,)):
+        r = dict(r)
+        r["invoices"] = json.loads(r.get("invoices") or "[]")
+        out.append(r)
+    return out
 
 
 def _now():
@@ -212,6 +237,10 @@ def check(d, cfg=None, taken=None):
     elif dq and q < dq:
         add("warn", f"Part supply: {q:g} of the DR's {dq:g}")
     pk, pc = float(d.get("packages") or 0), float(d.get("pieces") or 0)
+    if not pk:
+        add("error", "No of packages not entered")
+    if not pc:
+        add("error", "No of pieces not entered")
     if pk and pc and abs(pk * pc - q) > 0.001:
         add("warn", f"Packages × pieces = {pk * pc:g}, not the total {q:g}")
     if not re.search(rf"DR\s*{re.escape(d.get('dr_no') or '')}", d.get("remarks") or ""):
@@ -265,7 +294,8 @@ def add_pdf(name, data, inv_date=None):
                  item_name=h.get("item_name") or "", gst_rate=gst, inv_no="", inv_date=inv_date, qty=x["qty"],
                  pieces=x["size"], packages=x["req"], kgs="", rate=rate, rate_po=rate,
                  remarks=remarks_for(h, x["req"], x["dr_no"], x["bin"]), status="draft", file_name=name,
-                 created_by=_user(), created_at=_now(), last_rate=h.get("last_rate"), last_inv=h.get("last_inv"))
+                 created_by=_user(), created_at=_now(), last_rate=h.get("last_rate"), last_inv=h.get("last_inv"),
+                 title=DEFAULT_TITLE)
         compute(d)
         d["_dr_done"] = done.get(x["dr_no"])
         d["issues"] = json.dumps(check(d))
@@ -281,6 +311,7 @@ def add_pdf(name, data, inv_date=None):
         msg += f" ({skipped} already here)"
     if dr in done:
         msg += f" - already invoiced in Tally as {done[dr]}"
+    log_event("Uploaded DR", f"{name}: {msg}", [f"DR {x['dr_no']} {x['part']}" for x in lines])
     return dict(message=msg, made=made, skipped=skipped)
 
 
@@ -320,15 +351,17 @@ def listing(status=""):
     q = "SELECT * FROM drinv_drafts" + (" WHERE status=?" if status else "") + " ORDER BY status='sent', inv_no='', inv_no, id"
     ds = [_row(r) for r in rows(q, (status,) if status else ())]
     cnt = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM drinv_drafts GROUP BY status")}
-    return dict(drafts=ds, counts=cnt, next_no=next_number(), config=public_config())
+    return dict(drafts=ds, counts=cnt, next_no=next_number(), config=public_config(), history=history_log())
 
 
 def public_config():
     c = config()
     t = c.get("templates") or {}
     return dict(vtype=c["vtype"], company=c["company"], plants=c["plants"],
-                learned={p: dict(from_inv=v.get("from_inv"), at=v.get("at"), fields=[f["desc"] for f in v.get("udf", [])])
-                         for p, v in t.items()})
+                learned={p: dict(from_inv=v.get("from_inv"), at=v.get("at"), fields=[f["desc"] for f in v.get("udf", [])],
+                                 address=bool(v.get("has_address")))
+                         for p, v in t.items()},
+                last_learn=c.get("last_learn") or "")
 
 
 def update(did, patch):
@@ -381,28 +414,40 @@ def number_from(start, ids):
     for i, did in enumerate(ids):
         con.execute("UPDATE drinv_drafts SET inv_no=?, status='draft' WHERE id=? AND status<>'sent'", (f"{n + i}{suf}", did))
     con.commit()
+    log_event("Numbered", f"{len(ids)} invoice(s) from {n}{suf}")
     recheck()
 
 
-def verify(ids, on=True):
+def verify(ids, on=True, force=False):
+    """on: draft -> verified (blocked by errors). off: back to draft; force also takes back an invoice marked
+    'sent' (after it was deleted in Tally, to send it again)."""
     recheck(ids)
     con = get_db()
-    bad = []
+    bad, done = [], []
     for d in rows(f"SELECT * FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))})", tuple(ids)):
-        if d["status"] == "sent":
+        if d["status"] == "sent" and not (force and not on):
             continue
         if on and any(i["level"] == "error" for i in json.loads(d["issues"] or "[]")):
             bad.append(d["inv_no"] or f"DR {d['dr_no']}")
             continue
-        con.execute("UPDATE drinv_drafts SET status=?, verified_by=?, verified_at=? WHERE id=?",
-                    ("verified" if on else "draft", _user() if on else None, _now() if on else None, d["id"]))
+        con.execute("UPDATE drinv_drafts SET status=?, verified_by=?, verified_at=?, tally_msg=? WHERE id=?",
+                    ("verified" if on else "draft", _user() if on else None, _now() if on else None,
+                     None if d["status"] == "sent" else d.get("tally_msg"), d["id"]))
+        done.append(d["inv_no"] or f"DR {d['dr_no']}")
     con.commit()
+    if done:
+        log_event("Verified" if on else ("Back to draft (was in Tally)" if force else "Back to draft"),
+                  f"{len(done)} invoice(s)", done)
     return bad
 
 
 def remove(ids):
+    gone = [d["inv_no"] or f"DR {d['dr_no']}" for d in rows(
+        f"SELECT inv_no, dr_no FROM drinv_drafts WHERE status<>'sent' AND id IN ({','.join('?' * len(ids))})", tuple(ids))]
     get_db().execute(f"DELETE FROM drinv_drafts WHERE status<>'sent' AND id IN ({','.join('?' * len(ids))})", tuple(ids))
     get_db().commit()
+    if gone:
+        log_event("Deleted drafts", f"{len(gone)} draft(s)", gone)
 
 
 # ---------------------------------------------------------------- Tally
@@ -419,95 +464,155 @@ def _num(v):
     return f"{v:.0f}" if v == int(v) else f"{v:g}"
 
 
-PARTY_TAGS = ("PARTYNAME", "PARTYMAILINGNAME", "BASICBUYERNAME", "PARTYGSTIN", "PARTYPINCODE", "STATENAME",
-              "COUNTRYOFRESIDENCE", "PLACEOFSUPPLY", "GSTREGISTRATIONTYPE", "CONSIGNEEGSTIN", "CONSIGNEEMAILINGNAME",
-              "CONSIGNEEPINCODE", "CONSIGNEESTATENAME", "CONSIGNEECOUNTRYNAME", "BASICBASEPARTYNAME", "CMPGSTIN",
-              "CMPGSTSTATE", "CMPGSTREGISTRATIONTYPE", "VCHGSTCLASS", "PERSISTEDVIEW", "VCHENTRYMODE")
-PARTY_LISTS = ("ADDRESS.LIST", "BASICBUYERADDRESS.LIST", "CONSIGNEEADDRESS.LIST")
+# what a real TAFE invoice carries about the buyer / consignee (copied from it when the format is learned)
+PARTY_PREFIX = ("PARTY", "CONSIGNEE", "BASICBUYER", "BUYER", "BASICBASEPARTY")
+PARTY_TAGS = ("STATENAME", "COUNTRYOFRESIDENCE", "PLACEOFSUPPLY", "GSTREGISTRATIONTYPE", "VCHGSTCLASS")
+SKIP_TAGS = {"PARTYLEDGERNAME", "BASICBUYERNAME"}          # written by the hub itself
 
 
 def _role(desc):
     k = re.sub(r"[^A-Z]", "", (desc or "").upper())
-    if "PO" in k[:3] and ("NUMBER" in k or k.endswith("NO")):
+    if k.startswith("PO") and ("NUMBER" in k or k.endswith("NO")):
         return "po"
     if "PICES" in k or "PIECES" in k:
         return "pieces"
-    if "PACKAGE" in k:
+    if "PACKAGE" in k or "PACKEGE" in k:
         return "packages"
     if "TOTALNOS" in k or k == "NOS":
         return "qty"
     if "KG" in k:
         return "kgs"
+    if "TITLE" in k:
+        return "title"
     return "fixed"
 
 
-def learn(text):
+def _norm(s):
+    return re.sub(r"\s+", " ", html.unescape(s or "")).strip().lower()
+
+
+def learn(text, company=""):
     """A Tally Day Book answer -> per plant, what its newest GST SALES NEW invoice to TAFE carries:
-    the user-defined fields (PO NUMBER, NO OF PICES, ...), party / consignee details, unit and godown."""
+    the user-defined fields (PO NUMBER, Title, NO OF PICES, ...), buyer / consignee details and address,
+    unit and godown. When nothing matches, the answer is described (what Tally sent) so it can be put right."""
     cfg = config()
-    party_plant = {v["party"].lower(): p for p, v in cfg["plants"].items()}
-    learned = {}
-    for m in re.finditer(r"<VOUCHER\b[^>]*>.*?</VOUCHER>", text, re.S):
-        v = m.group(0)
+    err = re.search(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
+    if err:
+        msg = f"Tally said: {html.unescape(err.group(1)).strip()}"
+        save_config(dict(last_learn=msg))
+        return dict(ok=False, learned=[], message=msg)
+    party_plant = {_norm(v["party"]): p for p, v in cfg["plants"].items()}
+    vt_want = _norm(cfg["vtype"])
+    learned, types, parties, n = {}, {}, {}, 0
+    for m in re.finditer(r"<VOUCHER\b([^>]*)>(.*?)</VOUCHER>", text or "", re.S):
+        n += 1
+        attrs, v = m.group(1), m.group(2)
         vt = re.search(r"<VOUCHERTYPENAME>(.*?)</VOUCHERTYPENAME>", v)
-        if not vt or html.unescape(vt.group(1)).strip() != cfg["vtype"]:
-            continue
-        pl = re.search(r"<PARTYLEDGERNAME>(.*?)</PARTYLEDGERNAME>", v)
-        plant = party_plant.get(html.unescape(pl.group(1)).strip().lower()) if pl else None
-        if not plant or plant in learned:
+        vt = _norm(vt.group(1)) if vt else _norm((re.search(r'VCHTYPE="([^"]*)"', attrs) or [None, ""])[1])
+        types[vt] = types.get(vt, 0) + 1
+        pl = None
+        for tag in ("PARTYLEDGERNAME", "PARTYNAME", "BASICBUYERNAME"):
+            mm = re.search(rf"<{tag}>(.*?)</{tag}>", v)
+            if mm and _norm(mm.group(1)) in party_plant:
+                pl = party_plant[_norm(mm.group(1))]
+                break
+            if mm and tag == "PARTYLEDGERNAME":
+                parties[_norm(mm.group(1))] = 1
+        if vt != vt_want or not pl or pl in learned:
             continue
         head = re.sub(r"<(ALLINVENTORYENTRIES|LEDGERENTRIES|ALLLEDGERENTRIES|INVENTORYENTRIES)\.LIST>.*?"
                       r"</\1\.LIST>", "", v, flags=re.S)
         udf = []
-        for u in re.finditer(r"<(UDF:[A-Z0-9_]+)\.LIST([^>]*)>\s*<\1([^>]*)>(.*?)</\1>\s*</\1\.LIST>", head, re.S):
+        for u in re.finditer(r"<(UDF:[A-Za-z0-9_]+)\.LIST([^>]*)>\s*<\1([^>]*)>(.*?)</\1>\s*</\1\.LIST>", head, re.S):
             desc = re.search(r'DESC="`?([^"`]*)`?"', u.group(2) + u.group(3))
             desc = desc.group(1) if desc else u.group(1)[4:]
             udf.append(dict(tag=u.group(1), list_attrs=u.group(2), attrs=u.group(3), desc=desc,
                             sample=html.unescape(u.group(4)), role=_role(desc)))
         tags = {}
-        for t in PARTY_TAGS:
-            mm = re.search(rf"<{t}>(.*?)</{t}>", head, re.S)
-            if mm and mm.group(1).strip():
-                tags[t] = mm.group(0)
-        for t in PARTY_LISTS:
-            mm = re.search(rf"<{re.escape(t)}\b[^>]*>.*?</{re.escape(t)}>", head, re.S)
-            if mm:
-                tags[t] = mm.group(0)
+        for t, val in re.findall(r"<([A-Z][A-Z0-9]*)>([^<]*)</\1>", head):
+            if not val.strip() or t in SKIP_TAGS:
+                continue
+            if t.startswith(PARTY_PREFIX) or t in PARTY_TAGS:
+                tags.setdefault(t, f"<{t}>{val}</{t}>")
+        has_addr = False
+        for mm in re.finditer(r"<([A-Z]*ADDRESS)\.LIST\b[^>]*>(.*?)</\1\.LIST>", head, re.S):
+            if "EWAY" in mm.group(1) or not re.sub(r"<[^>]+>|\s", "", mm.group(2)):
+                continue
+            tags.setdefault(mm.group(1) + ".LIST", mm.group(0))
+            has_addr = True
         unit = re.search(r"<BILLEDQTY>\s*[\d.]+\s*([A-Za-z.]+)\s*</BILLEDQTY>", v)
         god = re.search(r"<GODOWNNAME>(.*?)</GODOWNNAME>", v)
         od = re.search(r"<BASICORDERDATE>(\d{8})</BASICORDERDATE>", v)
         po = re.search(r"<BASICPURCHASEORDERNO>(.*?)</BASICPURCHASEORDERNO>", v)
         no = re.search(r"<VOUCHERNUMBER>(.*?)</VOUCHERNUMBER>", v)
-        learned[plant] = dict(udf=udf, tags=tags, unit=unit.group(1) if unit else cfg["unit"],
-                              godown=html.unescape(god.group(1)) if god else "",
-                              order_date=od.group(1) if od else "", order_po=po.group(1) if po else "",
-                              order_list=bool(re.search(r"<INVOICEORDERLIST\.LIST>", v)),
-                              from_inv=no.group(1) if no else "", at=_now())
+        learned[pl] = dict(udf=udf, tags=tags, has_address=has_addr, unit=unit.group(1) if unit else cfg["unit"],
+                           godown=html.unescape(god.group(1)) if god else "",
+                           order_date=od.group(1) if od else "", order_po=po.group(1) if po else "",
+                           order_list=bool(re.search(r"<INVOICEORDERLIST\.LIST>", v)),
+                           from_inv=no.group(1) if no else "", at=_now())
     if not learned:
-        return dict(ok=False, learned=[], message=f"No {cfg['vtype']} invoice to TAFE found in that Tally answer")
+        top = ", ".join(f"{k or '?'} ({c})" for k, c in sorted(types.items(), key=lambda x: -x[1])[:6])
+        msg = (f"No {cfg['vtype']} invoice to TAFE in Tally's answer{f' (company {company})' if company else ''}: "
+               f"{n} voucher(s), {len(text or '') // 1024} KB" + (f"; types {top}" if n else "") +
+               (f"; parties e.g. {', '.join(list(parties)[:4])}" if parties else "") +
+               ("" if n else f"; Tally sent: {re.sub(r'<[^>]+>', ' ', (text or '')[:300]).strip()[:200] or 'nothing'}"))
+        save_config(dict(last_learn=msg))
+        return dict(ok=False, learned=[], message=msg)
     t = dict(cfg.get("templates") or {})
     t.update(learned)
-    save_config(dict(templates=t))
-    return dict(ok=True, learned=sorted(learned),
-                message="Learned from " + ", ".join(f"{p} invoice {v['from_inv']}" for p, v in sorted(learned.items())))
+    msg = "Learned from " + ", ".join(
+        f"{p} invoice {v['from_inv']} (fields: {', '.join(u['desc'] for u in v['udf']) or 'none'}"
+        f"{', address' if v['has_address'] else ''})" for p, v in sorted(learned.items()))
+    save_config(dict(templates=t, last_learn=msg))
+    log_event("Learned Tally format", msg)
+    return dict(ok=True, learned=sorted(learned), message=msg)
 
 
 def learn_request():
-    """Day Book request for the last day Tally had GST SALES NEW invoices to each TAFE plant."""
+    """Day Book requests: per plant the last 3 days Tally had GST SALES NEW invoices to it (one request a day,
+    small enough for the website), newest first. The browser stops once every plant is learned."""
     from ..grin.services.tally import daybook_request
     cfg = config()
-    days = set()
+    days = []
     for p in cfg["plants"].values():
-        r = one("SELECT MAX(vdate) d FROM gp_tally_vouchers WHERE vtype=? AND party=?", (cfg["vtype"], p["party"]))
-        if r and r["d"]:
-            days.add(r["d"])
+        for r in rows("SELECT DISTINCT vdate d FROM gp_tally_vouchers WHERE vtype=? AND party=? AND cancelled=0 "
+                      "ORDER BY vdate DESC LIMIT 3", (cfg["vtype"], p["party"])):
+            if r["d"] and r["d"] not in days:
+                days.append(r["d"])
     if not days:
-        days = {date.today().isoformat()}
-    reqs = []
-    for d in sorted(days):
-        dd = date.fromisoformat(d)
-        reqs.append(daybook_request(cfg["company"], dd, dd))
-    return reqs
+        days = [date.today().isoformat()]
+    days.sort(reverse=True)
+    return [daybook_request(cfg["company"], date.fromisoformat(d), date.fromisoformat(d)) for d in days[:6]]
+
+
+def _party_xml(pl, tp):
+    """Buyer and consignee: as learned from a real invoice, else from the plant's details in the hub."""
+    tags = dict((tp or {}).get("tags") or {})
+    have_addr = (tp or {}).get("has_address")
+    out = list(tags.values())
+    name = pl["party"]
+    base = {"PARTYNAME": name, "PARTYMAILINGNAME": name, "CONSIGNEEMAILINGNAME": name,
+            "STATENAME": pl.get("state"), "COUNTRYOFRESIDENCE": "India", "PLACEOFSUPPLY": pl.get("state"),
+            "PARTYPINCODE": pl.get("pincode"), "PARTYGSTIN": pl.get("gstin"), "GSTREGISTRATIONTYPE": "Regular",
+            "CONSIGNEEGSTIN": pl.get("gstin"), "CONSIGNEEPINCODE": pl.get("pincode"),
+            "CONSIGNEESTATENAME": pl.get("state"), "CONSIGNEECOUNTRYNAME": "India", "BASICBASEPARTYNAME": name}
+    for t, v in base.items():
+        if v and t not in tags:
+            out.append(f"<{t}>{_x(v)}</{t}>")
+    if not have_addr and pl.get("address"):
+        lines = "".join(f"<ADDRESS>{_x(a)}</ADDRESS>" for a in pl["address"])
+        out.append(f'<ADDRESS.LIST TYPE="String">{lines}</ADDRESS.LIST>')
+        out.append(f'<BASICBUYERADDRESS.LIST TYPE="String">{lines}</BASICBUYERADDRESS.LIST>')
+    return "\n".join(out)
+
+
+def _ledger(name, amount, party=False):
+    """One ledger line. Tally: debit = negative amount + deemed positive Yes. ISLASTDEEMEDPOSITIVE must say the
+    same - without it Tally's invoice screen took the Round Off debit as a credit (+0.44 instead of -0.44)."""
+    dp = "Yes" if amount < 0 else "No"
+    extra = "<ISPARTYLEDGER>Yes</ISPARTYLEDGER>" if party else ""
+    return (f"<LEDGERENTRIES.LIST><LEDGERNAME>{_x(name)}</LEDGERNAME><ISDEEMEDPOSITIVE>{dp}</ISDEEMEDPOSITIVE>"
+            f"{extra}<ISLASTDEEMEDPOSITIVE>{dp}</ISLASTDEEMEDPOSITIVE><AMOUNT>{amount:.2f}</AMOUNT>")
 
 
 def voucher_xml(d, cfg=None):
@@ -522,21 +627,19 @@ def voucher_xml(d, cfg=None):
     amt, total = d["amount"], d["total"]
     qty = f" {_num(d['qty'])} {unit}"
     vals = dict(po=d["po_no"], pieces=_num(d["pieces"]), packages=_num(d["packages"]), qty=_num(d["qty"]),
-                kgs=d.get("kgs") or "")
+                kgs=d.get("kgs") or "", title=d.get("title") if d.get("title") is not None else DEFAULT_TITLE)
     udf = ""
     for u in tp.get("udf", []):
         val = vals.get(u["role"]) if u["role"] != "fixed" else u.get("sample", "")
         if val in (None, ""):
             continue
         udf += f"<{u['tag']}.LIST{u['list_attrs']}><{u['tag']}{u['attrs']}>{_x(val)}</{u['tag']}></{u['tag']}.LIST>\n"
-    party_tags = "\n".join((tp.get("tags") or {}).values())
     order = ""
     if tp.get("order_list", True):
         od = tp.get("order_date") if tp.get("order_po") == d["po_no"] else ""
         if not od:
             h = one("SELECT po_date FROM po_headers WHERE po_no=?", (d["po_no"],))
-            pd = (h or {}).get("po_date") or ""
-            mm = re.match(r"(\d\d)\.(\d\d)\.(\d{4})", pd)
+            mm = re.match(r"(\d\d)\.(\d\d)\.(\d{4})", (h or {}).get("po_date") or "")
             od = f"{mm.group(3)}{mm.group(2)}{mm.group(1)}" if mm else ""
         order = (f"<INVOICEORDERLIST.LIST>{f'<BASICORDERDATE>{od}</BASICORDERDATE>' if od else ''}"
                  f"<BASICPURCHASEORDERNO>{_x(d['po_no'])}</BASICPURCHASEORDERNO></INVOICEORDERLIST.LIST>")
@@ -546,29 +649,28 @@ def voucher_xml(d, cfg=None):
     taxes = ""
     for led, v in ((cfg["cgst"], d["cgst"]), (cfg["sgst"], d["sgst"]), (cfg["igst"], d["igst"])):
         if v:
-            taxes += (f"<LEDGERENTRIES.LIST><LEDGERNAME>{_x(led)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>"
-                      f"<AMOUNT>{v:.2f}</AMOUNT></LEDGERENTRIES.LIST>\n")
+            taxes += _ledger(led, v) + "</LEDGERENTRIES.LIST>\n"
     ro = d["round_off"] or 0
     if abs(ro) >= 0.005:
-        taxes += (f"<LEDGERENTRIES.LIST><LEDGERNAME>{_x(cfg['round_off'])}</LEDGERNAME>"
-                  f"<ISDEEMEDPOSITIVE>{'Yes' if ro < 0 else 'No'}</ISDEEMEDPOSITIVE>"
-                  f"<AMOUNT>{ro:.2f}</AMOUNT></LEDGERENTRIES.LIST>\n")
+        # round_off is what is added to the bill: -0.44 lowers it (a debit in Tally), +0.08 raises it (a credit)
+        taxes += _ledger(cfg["round_off"], ro) + "</LEDGERENTRIES.LIST>\n"
+    party_led = _ledger(pl["party"], -total, party=True)
     return f"""<VOUCHER VCHTYPE="{_x(cfg['vtype'])}" ACTION="Create" OBJVIEW="Invoice Voucher View">
 <DATE>{_tdate(d['inv_date'])}</DATE><EFFECTIVEDATE>{_tdate(d['inv_date'])}</EFFECTIVEDATE>
 <VOUCHERTYPENAME>{_x(cfg['vtype'])}</VOUCHERTYPENAME><VOUCHERNUMBER>{_x(d['inv_no'])}</VOUCHERNUMBER>
-<PARTYLEDGERNAME>{_x(pl['party'])}</PARTYLEDGERNAME>
-{party_tags}
+<PARTYLEDGERNAME>{_x(pl['party'])}</PARTYLEDGERNAME><BASICBUYERNAME>{_x(pl['party'])}</BASICBUYERNAME>
+{_party_xml(pl, tp)}
 <NARRATION>{_x(d['remarks'])}</NARRATION><ISINVOICE>Yes</ISINVOICE>
-{'' if 'PERSISTEDVIEW' in (tp.get('tags') or {}) else '<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>'}
+<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW><VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
 {order}
-{udf}<LEDGERENTRIES.LIST><LEDGERNAME>{_x(pl['party'])}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-<ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>{-total:.2f}</AMOUNT>
+{udf}{party_led}
 <BILLALLOCATIONS.LIST><NAME>{_x(d['inv_no'])}</NAME><BILLTYPE>New Ref</BILLTYPE><AMOUNT>{-total:.2f}</AMOUNT></BILLALLOCATIONS.LIST>
 </LEDGERENTRIES.LIST>
 <ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>{_x(d['item_name'])}</STOCKITEMNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+<ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>
 <RATE>{d['rate']:.2f}/{unit}</RATE><AMOUNT>{amt:.2f}</AMOUNT><ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY>
 {batch}
-<ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>{_x(sales)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>{amt:.2f}</AMOUNT></ACCOUNTINGALLOCATIONS.LIST>
+<ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>{_x(sales)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE><AMOUNT>{amt:.2f}</AMOUNT></ACCOUNTINGALLOCATIONS.LIST>
 </ALLINVENTORYENTRIES.LIST>
 {taxes}</VOUCHER>"""
 
@@ -583,19 +685,22 @@ def import_xml(d, cfg=None):
 
 
 def send_plan(ids):
-    """Verified drafts -> [dict(id, inv_no, xml)] to post to Tally one by one."""
+    """Verified drafts -> [dict(id, inv_no, xml)] to post to Tally one by one. no_fields: plants whose invoice
+    format (NO OF PICES, NO OF PACKAGES, TOTAL NOS ... fields) is not learned - those would reach Tally empty."""
     cfg = config()
     recheck(ids)
-    out, skipped = [], []
+    out, skipped, plants = [], [], set()
     for d in rows(f"SELECT * FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))}) ORDER BY inv_no", tuple(ids)):
         if d["status"] != "verified":
             skipped.append(d["inv_no"] or f"DR {d['dr_no']}")
             continue
+        plants.add(d["plant"])
         out.append(dict(id=d["id"], inv_no=d["inv_no"], xml=import_xml(d, cfg)))
-    missing = [p for p in {d["plant"] for d in rows(
-        f"SELECT plant FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))}
-        if p not in (cfg.get("templates") or {})]
-    return dict(items=out, skipped=skipped, need_learn=missing)
+    t = cfg.get("templates") or {}
+    need = sorted(p for p in plants if p not in t)
+    no_fields = sorted(p for p in plants if not any(u["role"] in ("pieces", "packages", "qty")
+                                                    for u in (t.get(p) or {}).get("udf", [])))
+    return dict(items=out, skipped=skipped, need_learn=need, no_fields=no_fields)
 
 
 def tally_result(did, text):
@@ -606,12 +711,15 @@ def tally_result(did, text):
     errs = re.findall(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
     created, altered = n("CREATED"), n("ALTERED")
     con = get_db()
+    d = one("SELECT inv_no FROM drinv_drafts WHERE id=?", (did,)) or {}
     if (created or altered) and not n("ERRORS"):
         con.execute("UPDATE drinv_drafts SET status='sent', sent_by=?, sent_at=?, tally_msg=? WHERE id=?",
                     (_user(), _now(), "Created in Tally", did))
         con.commit()
+        log_event("Sent to Tally", d.get("inv_no") or "", [d.get("inv_no")])
         return dict(ok=True)
     msg = "; ".join(html.unescape(e).strip() for e in errs) or (text or "").strip()[:300] or "Tally gave no answer"
     con.execute("UPDATE drinv_drafts SET tally_msg=? WHERE id=?", (msg, did))
     con.commit()
+    log_event("Tally refused", f"{d.get('inv_no')}: {msg}", [d.get("inv_no")])
     return dict(ok=False, error=msg)

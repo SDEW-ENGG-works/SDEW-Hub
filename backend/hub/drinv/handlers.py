@@ -55,7 +55,8 @@ def number(req):
 
 @route("POST", r"/api/verify")
 def verify(req):
-    bad = service.verify(_ids(req), on=(req.json or {}).get("on", True) is not False)
+    b = req.json or {}
+    bad = service.verify(_ids(req), on=b.get("on", True) is not False, force=bool(b.get("force")))
     out = service.listing()
     out["not_verified"] = bad
     return out
@@ -65,6 +66,11 @@ def verify(req):
 def delete(req):
     service.remove(_ids(req))
     return service.listing()
+
+
+@route("GET", r"/api/history")
+def history(req):
+    return service.history_log(int(req.arg("limit") or 200))
 
 
 @route("POST", r"/api/config")
@@ -85,7 +91,7 @@ def learn(req):
     text = b.get("text") or ""
     if b.get("gz"):
         text = gzip.decompress(base64.b64decode(b["gz"])).decode("utf-8", errors="replace")
-    return service.learn(text)
+    return service.learn(text, service.config().get("company", ""))
 
 
 @route("POST", r"/api/send-plan")
