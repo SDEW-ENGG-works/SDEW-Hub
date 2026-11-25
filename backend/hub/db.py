@@ -174,6 +174,16 @@ CREATE TABLE IF NOT EXISTS drinv_drafts(
 -- "Read Tally structure": raw XML Tally gave for chosen invoices and ledgers, to match Tally's own format
 CREATE TABLE IF NOT EXISTS drinv_samples(
     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, kind TEXT, ref TEXT, summary TEXT, text TEXT);
+-- Delivery challans (Tally "Delivery Note" vouchers) pulled from Tally on DR -> Invoice > Admin > Pull DC
+CREATE TABLE IF NOT EXISTS tally_dc(
+    vkey TEXT PRIMARY KEY, guid TEXT, vtype TEXT, vno TEXT, vdate TEXT, party TEXT, reference TEXT, order_no TEXT,
+    narration TEXT, cancelled INTEGER DEFAULT 0, pieces TEXT, packages TEXT, total_nos TEXT, title TEXT, party_name TEXT,
+    po_no TEXT, qty REAL, amount REAL, alter_id INTEGER, pulled_at TEXT);
+CREATE INDEX IF NOT EXISTS ix_tally_dc_date ON tally_dc(vdate);
+CREATE TABLE IF NOT EXISTS tally_dc_lines(
+    vkey TEXT, seq INTEGER, item TEXT, part TEXT, qty REAL, unit TEXT, rate REAL, amount REAL, godown TEXT,
+    order_no TEXT, PRIMARY KEY(vkey, seq));
+CREATE INDEX IF NOT EXISTS ix_tally_dc_lines_part ON tally_dc_lines(part);
 CREATE TABLE IF NOT EXISTS drinv_log(
     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, action TEXT, detail TEXT, invoices TEXT);
 CREATE TABLE IF NOT EXISTS m_plants(

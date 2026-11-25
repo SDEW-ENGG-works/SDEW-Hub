@@ -160,3 +160,38 @@ def structure_download(req):
     body = service.samples_text(ids or None).encode("utf-8")
     return Response(body, content_type="text/xml; charset=utf-8", headers={
         "Content-Disposition": 'attachment; filename="tally_structure.xml"'})
+
+
+# ---------------------------------------------------------------- Delivery challans from Tally (Admin)
+@route("POST", r"/api/dc/plan")
+def dc_plan(req):
+    from datetime import date
+    from . import dc
+    b = req.json or {}
+    try:
+        d2 = date.fromisoformat(b.get("to") or date.today().isoformat())
+        d1 = date.fromisoformat(b.get("from") or "2026-04-01")
+    except ValueError:
+        raise ApiError("Dates must be yyyy-mm-dd")
+    if d1 > d2:
+        raise ApiError("From date is after To date")
+    return dict(chunks=dc.plan(service.config().get("company", ""), d1, d2))
+
+
+@route("POST", r"/api/dc/save")
+def dc_save(req):
+    from . import dc
+    b = req.json or {}
+    text = b.get("text") or ""
+    if b.get("gz"):
+        text = gzip.decompress(base64.b64decode(b["gz"])).decode("utf-8", errors="replace")
+    r = dc.save(text, b.get("from") or "", b.get("to") or "")
+    if r.get("ok"):
+        service.log_event("Pulled DC from Tally", f"{b.get('from')} to {b.get('to')}: {r.get('dcs', 0)} DC(s)")
+    return r
+
+
+@route("GET", r"/api/dc")
+def dc_list(req):
+    from . import dc
+    return dc.listing(req.arg("q") or "", int(req.arg("limit") or 300))

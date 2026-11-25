@@ -357,6 +357,56 @@ async function readStructure() {
     loadDrafts();
 }
 
+// ---------- Delivery challans from Tally (Admin)
+async function loadDC() {
+    let r;
+    const q = (document.getElementById('dc-q') || {}).value || '';
+    try { r = await api(`/api/drinv/dc?q=${encodeURIComponent(q)}`); } catch (e) { return; }
+    const s = r.summary || {};
+    document.getElementById('dc-sum').textContent = s.n ? `${inr(s.n, 0)} DCs in the hub, ${dmy(s.first)} to ${dmy(s.last)} · pulled ${when(s.pulled)}` : 'No DC pulled yet';
+    const t = document.getElementById('dc-table');
+    t.innerHTML = r.dcs.length ? `<thead><tr><th>DC no</th><th>Date</th><th>Party</th><th>PO</th><th>Items</th><th>Qty</th>
+        <th>Pcs / Pkgs / Total</th><th>Narration</th></tr></thead><tbody>` + r.dcs.map(d => `<tr${d.cancelled ? ' style="opacity:.5"' : ''}>
+        <td><b>${esc(d.vno)}</b>${d.cancelled ? '<div class="di-small" style="color:#b91c1c">cancelled</div>' : ''}<div class="di-small">${esc(d.vtype)}</div></td>
+        <td style="white-space:nowrap">${dmy(d.vdate)}</td><td>${esc(d.party)}${d.party_name ? `<div class="di-small">${esc(d.party_name)}</div>` : ''}</td>
+        <td>${esc(d.po_no || d.order_no || '')}</td>
+        <td style="min-width:220px">${d.lines.map(l => `<div>${esc(l.item)} <span class="di-small">${num(l.qty)} ${esc(l.unit || '')}${l.rate ? ' @ ' + inr(l.rate) : ''}</span></div>`).join('')}</td>
+        <td class="num">${num(d.qty)}</td><td>${[d.pieces, d.packages, d.total_nos].map(x => esc(x || '–')).join(' / ')}</td>
+        <td style="min-width:220px">${esc(d.narration || '')}</td></tr>`).join('') + '</tbody>'
+        : `<tr><td class="muted" style="padding:.8rem">${q ? 'No DC matches.' : 'No DC pulled yet.'}</td></tr>`;
+}
+
+async function pullDC() {
+    const from = document.getElementById('dc-from').value, to = document.getElementById('dc-to').value || todayIso();
+    if (!from) return showToast('Pick the From date', 'danger');
+    const btn = document.getElementById('btn-dc');
+    btn.disabled = true;
+    document.getElementById('dc-log').textContent = '';
+    let total = 0, bad = 0;
+    try {
+        const plan = await apiJson('/api/drinv/dc/plan', 'POST', { from, to });
+        for (const c of plan.chunks) {
+            logLine(`${dmy(c.from)} – ${dmy(c.to)}: reading DCs from Tally…`, 'dc-log');
+            try {
+                let r = null;
+                for (const xml of [c.xml, c.xml_plain]) {
+                    const text = await tallyCall(xml);
+                    const gz = await gzipB64(text);
+                    r = await apiJson('/api/drinv/dc/save', 'POST', Object.assign({ from: c.from, to: c.to }, gz ? { gz } : { text }));
+                    if (r.ok) break;
+                    logLine(`  Tally said: ${r.error} - trying the simple request`, 'dc-log');
+                }
+                if (!r.ok) { bad++; logLine(`  not read: ${r.error}`, 'dc-log'); continue; }
+                total += r.dcs || 0;
+                logLine(r.note ? `  ${r.note}` : `  ${r.dcs} DC(s), ${r.lines} item line(s)${r.with_fields ? `, ${r.with_fields} with pieces / packages` : ''}`, 'dc-log');
+            } catch (e) { bad++; logLine(`  ${e.message}`, 'dc-log'); if (e.message === BRIDGE_HELP) break; }
+        }
+        showToast(`${total} DC(s) pulled from Tally${bad ? `, ${bad} period(s) not read` : ''}`, bad ? 'danger' : 'success', 7000);
+    } catch (e) { showToast(e.message, 'danger', 9000); }
+    btn.disabled = false;
+    loadDC();
+}
+
 // ---------- tabs: Main page / History / Admin (Admin only for admins when login is on)
 function switchView(name) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -365,7 +415,7 @@ function switchView(name) {
     document.getElementById(`nav-${name}-btn`).classList.add('active');
     try { history.replaceState(null, '', `#${name}`); } catch (e) { /* ignore */ }
     if (name === 'history' || name === 'main') loadDrafts();
-    else if (name === 'admin') loadStructure();
+    else if (name === 'admin') { loadStructure(); loadDC(); }
 }
 
 (function () {
@@ -376,6 +426,7 @@ function switchView(name) {
 document.getElementById('inv-date').value = todayIso();
 loadDrafts();
 loadStructure();
+document.getElementById('dc-to').value = todayIso();
 {
     const tab = location.hash.replace('#', '');
     if (['history', 'admin'].includes(tab) && document.getElementById(`nav-${tab}-btn`).style.display !== 'none') switchView(tab);
