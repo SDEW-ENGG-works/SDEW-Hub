@@ -224,7 +224,10 @@ def tally_next(req):
         t = service.tally_last(_text(req.json or {}))
     except ValueError as e:
         raise ApiError(str(e))
-    return dict(last=t["last"], next=t["next"], source=t["source"], count=t["count"])
+    reopened = service.gone_from_tally(t)
+    if reopened:
+        service.recheck()
+    return dict(last=t["last"], next=t["next"], source=t["source"], count=t["count"], reopened=reopened)
 
 
 @route("POST", r"/api/assign-numbers")

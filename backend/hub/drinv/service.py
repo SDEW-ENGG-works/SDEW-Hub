@@ -186,7 +186,7 @@ def dr_invoiced(dr_nos):
 def _used_numbers(exclude_ids=()):
     """Invoice numbers that are taken: in Tally (the hub's copy) and invoices already sent from the hub. Numbers on
     drafts not sent yet do not count - drafts are numbered from Tally's last number."""
-    used = {r["vno"].strip() for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? AND vdate>=?",
+    used = {r["vno"].strip() for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? AND vdate>=? AND COALESCE(deleted,0)=0",
                                             (config()["vtype"], (date.today() - timedelta(days=400)).isoformat()))
             if r["vno"]}
     ex = set(exclude_ids)
@@ -199,7 +199,7 @@ def next_number():
     """The number after the last GST SALES NEW invoice in Tally (the hub's copy, kept up to date by the PC hub)
     or sent from the hub: '16297/26-27'. Drafts not yet sent do NOT count - they are numbered when sent."""
     best, suffix = 0, ""
-    for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? ORDER BY vdate DESC LIMIT 400",
+    for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? AND COALESCE(deleted,0)=0 ORDER BY vdate DESC LIMIT 400",
                   (config()["vtype"],)) + rows("SELECT inv_no vno FROM drinv_drafts WHERE inv_no<>'' AND status='sent'"):
         m = re.match(r"^(\d+)(/.*)?$", (r["vno"] or "").strip())
         if m and int(m.group(1)) > best:
@@ -260,7 +260,7 @@ def check(d, cfg=None, taken=None):
     if not no:
         add("info", "Invoice number: given automatically from Tally's last number when you send")
     else:
-        if one("SELECT vno FROM gp_tally_vouchers WHERE vno=? AND vtype LIKE '%SALES%'", (no,)):
+        if one("SELECT vno FROM gp_tally_vouchers WHERE vno=? AND vtype LIKE '%SALES%' AND COALESCE(deleted,0)=0", (no,)):
             add("error", f"Invoice {no} already exists in Tally")
         others = [o for o in (taken or {}).get(no, []) if o["id"] != d.get("id") and o["status"] == "sent"]
         if others:
@@ -491,14 +491,10 @@ def number_from(start, ids):
     if not m:
         raise ValueError("Start number like 16297/26-27")
     n, suf = int(m.group(1)), m.group(2) or ""
-    used = _used_numbers(exclude_ids=ids)
     con = get_db()
     given = []
     for did in ids:
-        while f"{n}{suf}" in used:
-            n += 1
         con.execute("UPDATE drinv_drafts SET inv_no=?, status='draft' WHERE id=? AND status<>'sent'", (f"{n}{suf}", did))
-        used.add(f"{n}{suf}")
         given.append(f"{n}{suf}")
         n += 1
     _clear_others(con, given, ids)
@@ -1042,10 +1038,10 @@ def tally_last(text):
         k, sf = _split_no(n)
         if k is not None and sf == main and k > best:
             best = k
-    hub = next_number()                     # the hub's copy of Tally + invoices sent from the hub
-    hk, hs = _split_no(hub)
-    if hk and (not main or hs == main) and hk - 1 > best:
-        best, src, main = hk - 1, "the hub's copy of Tally", main or hs
+    if not best:                            # Tally sent no number: the hub's copy of Tally instead
+        hk, hs = _split_no(next_number())
+        if hk:
+            best, src, main = hk - 1, "the hub's copy of Tally", hs
     if not best:
         raise ValueError("No GST SALES NEW invoice found in Tally's answer or in the hub")
     return dict(last=f"{best}{main}", next=f"{best + 1}{main}", numbers=nos, best=best, suffix=main, source=src,
@@ -1069,9 +1065,9 @@ def assign_from_tally(ids, text):
     skipping only a number Tally or an invoice already sent has. -> dict(last, next, changed=[...])."""
     t = tally_last(text)
     best, suf = t["best"], t["suffix"]
-    have = set(t["numbers"]) | _used_numbers(exclude_ids=ids)
-    used = {_split_no(x)[0] for x in have if _split_no(x)[1] == suf}
+    used = {_split_no(x)[0] for x in t["numbers"] if _split_no(x)[1] == suf}      # what Tally has NOW
     con = get_db()
+    reopened = gone_from_tally(t)
     ds = rows(f"SELECT id, inv_no, plant, dr_no, status FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))}) "
               "AND status<>'sent'", tuple(ids))
     n, changed, given = best, [], []
@@ -1090,4 +1086,35 @@ def assign_from_tally(ids, text):
     log_event("Numbered from Tally", f"Tally's last {t['last'] or '-'}: {given[0] if given else ''} to "
                                      f"{given[-1] if given else ''}", given)
     recheck()
-    return dict(last=t["last"], next=t["next"], changed=changed)
+    return dict(last=t["last"], next=t["next"], changed=changed, given=given, reopened=reopened, source=t["source"])
+
+
+def gone_from_tally(t):
+    """Invoices marked 'sent' whose number Tally no longer has (deleted there, e.g. 16297 / 16298 after a test):
+    back to draft, so they stop holding the number and can be sent again. Only numbers inside the period
+    Tally answered for (from 45 days ago) are judged."""
+    if not t.get("numbers"):
+        return []
+    since = (date.today() - timedelta(days=44)).isoformat()
+    con = get_db()
+    out = []
+    for d in rows("SELECT id, inv_no, dr_no FROM drinv_drafts WHERE status='sent' AND inv_date>=? AND inv_no<>''", (since,)):
+        if d["inv_no"].strip() not in t["numbers"]:
+            con.execute("UPDATE drinv_drafts SET status='draft', inv_no='', tally_msg=? WHERE id=?",
+                        (f"{d['inv_no']} is not in Tally any more (deleted there?) - send it again", d["id"]))
+            out.append(d["inv_no"])
+    # the hub's copy of Tally: invoices Tally no longer has are marked deleted (as the nightly check does), so
+    # "already exists in Tally" and the next number follow Tally now. Only when Tally's answer looks complete.
+    hub = rows("SELECT vkey, vno FROM gp_tally_vouchers WHERE vtype=? AND vdate>=? AND COALESCE(deleted,0)=0",
+               (config()["vtype"], since))
+    gone = [r for r in hub if (r["vno"] or "").strip() not in t["numbers"]]
+    if hub and len(t["numbers"]) >= len(hub) * 0.5 and len(gone) <= 20:
+        for r in gone:
+            con.execute("UPDATE gp_tally_vouchers SET deleted=1, cancelled=1 WHERE vkey=?", (r["vkey"],))
+        if gone:
+            log_event("Not in Tally any more", "hub's copy of Tally: " + ", ".join(r["vno"] for r in gone) + " marked deleted")
+    if out or gone:
+        con.commit()
+    if out:
+        log_event("Not in Tally any more", ", ".join(out) + " - back to draft", out)
+    return out

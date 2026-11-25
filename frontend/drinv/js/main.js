@@ -189,10 +189,21 @@ async function uploadDRs(files) {
 
 async function giveNumbers() {
     const ids = tickedIds(); if (!ids.length) return;
+    // from Tally's last number NOW (asked through the Tally bridge); only if Tally cannot be reached, from the box
+    try {
+        const r = await apiJson('/api/drinv/assign-numbers', 'POST', Object.assign({ ids }, await tallyAnswer((await api('/api/drinv/numbers-request')).xml)));
+        document.getElementById('start-no').value = r.next;
+        document.getElementById('tally-last').textContent = r.last ? `Tally's last: ${r.last}` : '';
+        await loadDrafts();
+        showToast(`Tally's last invoice ${r.last}: numbered ${r.given[0] || ''} to ${r.given[r.given.length - 1] || ''}` +
+            (r.reopened.length ? `. Not in Tally any more, back to draft: ${r.reopened.join(', ')}` : ''), 'success', 9000);
+        return;
+    } catch (e) {
+        if (!await confirmBox('Tally not reached', `${e.message}. Number the ticked invoices from ${document.getElementById('start-no').value} instead?`)) return;
+    }
     const start = document.getElementById('start-no').value.trim();
-    // number in the order shown: plant, then DR
     const order = shown().filter(d => ids.includes(d.id)).sort((a, b) => (a.plant || '').localeCompare(b.plant || '') || a.dr_no.localeCompare(b.dr_no)).map(d => d.id);
-    try { DI.data = await apiJson('/api/drinv/number', 'POST', { start, ids: order }); render(); showToast(`Numbered ${ids.length} invoice(s)`, 'success'); }
+    try { DI.data = await apiJson('/api/drinv/number', 'POST', { start, ids: order }); render(); showToast(`Numbered ${ids.length} invoice(s) from ${start}`, 'success'); }
     catch (e) { showToast(e.message, 'danger'); }
 }
 
@@ -250,7 +261,9 @@ async function nextFromTally() {
         const r = await apiJson('/api/drinv/tally-next', 'POST', await tallyAnswer((await api('/api/drinv/numbers-request')).xml));
         document.getElementById('start-no').value = r.next;
         document.getElementById('tally-last').textContent = r.last ? `Tally's last: ${r.last}` : '';
-        showToast(`Last invoice ${r.last} (from ${r.source}, ${r.count} invoice numbers read from Tally): numbers start from ${r.next}`, 'success', 8000);
+        showToast(`Last invoice ${r.last} (from ${r.source}, ${r.count} invoice numbers read from Tally): numbers start from ${r.next}` +
+            (r.reopened && r.reopened.length ? `. Not in Tally any more, back to draft: ${r.reopened.join(', ')}` : ''), 'success', 9000);
+        if (r.reopened && r.reopened.length) loadDrafts();
     } catch (e) { showToast(e.message, 'danger', 9000); }
 }
 
