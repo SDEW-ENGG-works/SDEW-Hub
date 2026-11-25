@@ -215,6 +215,8 @@ def needs(path):
         return ("supp", "grin", "pay")       # Fetch GRIN is on these three pages
     if p.startswith("/api/masters"):
         return "masters"
+    if p.startswith("/api/drinv/structure"):
+        return "admin"                       # DR -> Invoice > Admin: Read Tally structure
     for m in ("supp", "chep", "dqms", "grin", "pay", "pocheck", "drinv"):
         if p.startswith(f"/api/{m}/") or p == f"/{m}" or p.startswith(f"/{m}/"):
             return m

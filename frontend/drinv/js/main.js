@@ -193,8 +193,8 @@ async function removeDrafts() {
 }
 
 // ---------- Tally
-function logLine(t) {
-    const el = document.getElementById('di-log');
+function logLine(t, id = 'di-log') {
+    const el = document.getElementById(id);
     el.style.display = 'block';
     el.textContent += `${new Date().toLocaleTimeString('en-GB')}  ${t}\n`;
     el.scrollTop = el.scrollHeight;
@@ -336,19 +336,19 @@ async function readStructure() {
     const btn = document.getElementById('btn-structure');
     const nos = document.getElementById('st-nos').value.split(/[,\s]+/).filter(Boolean);
     btn.disabled = true;
-    document.getElementById('di-log').textContent = '';
+    document.getElementById('st-log').textContent = '';
     try {
         const plan = await apiJson('/api/drinv/structure-plan', 'POST', { nos });
-        if (plan.unknown.length) logLine(`Not found in the hub's Tally data (pull from Tally first, or check the number): ${plan.unknown.join(', ')}`);
+        if (plan.unknown.length) logLine(`Not found in the hub's Tally data (pull from Tally first, or check the number): ${plan.unknown.join(', ')}`, 'st-log');
         for (const q of plan.requests) {
-            logLine(`Reading ${q.kind} ${q.ref} from Tally…`);
+            logLine(`Reading ${q.kind} ${q.ref} from Tally…`, 'st-log');
             try {
                 const text = await tallyCall(q.xml);
                 const gz = await gzipB64(text);
                 const r = await apiJson('/api/drinv/structure-save', 'POST', Object.assign({ kind: q.kind, ref: q.ref, want: q.want }, gz ? { gz } : { text }));
-                r.saved.forEach(x => logLine(`  saved ${x.kind} ${x.ref} (${x.size} characters)${x.summary && x.summary.error ? ' - ' + x.summary.error : ''}`));
-                if (r.learn) logLine(`  ${r.learn.message}`);
-            } catch (e) { logLine(`  ${e.message}`); if (e.message === BRIDGE_HELP) break; }
+                r.saved.forEach(x => logLine(`  saved ${x.kind} ${x.ref} (${x.size} characters)${x.summary && x.summary.error ? ' - ' + x.summary.error : ''}`, 'st-log'));
+                if (r.learn) logLine(`  ${r.learn.message}`, 'st-log');
+            } catch (e) { logLine(`  ${e.message}`, 'st-log'); if (e.message === BRIDGE_HELP) break; }
         }
         showToast('Tally structure read and saved in the hub', 'success');
     } catch (e) { showToast(e.message, 'danger', 9000); }
@@ -357,6 +357,26 @@ async function readStructure() {
     loadDrafts();
 }
 
+// ---------- tabs: Main page / History / Admin (Admin only for admins when login is on)
+function switchView(name) {
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(`${name}-view`).classList.add('active');
+    document.getElementById(`nav-${name}-btn`).classList.add('active');
+    try { history.replaceState(null, '', `#${name}`); } catch (e) { /* ignore */ }
+    if (name === 'history' || name === 'main') loadDrafts();
+    else if (name === 'admin') loadStructure();
+}
+
+(function () {
+    const me = window.HUB_USER;
+    if (me && me.login && !me.admin) document.getElementById('nav-admin-btn').style.display = 'none';
+})();
+
 document.getElementById('inv-date').value = todayIso();
 loadDrafts();
 loadStructure();
+{
+    const tab = location.hash.replace('#', '');
+    if (['history', 'admin'].includes(tab) && document.getElementById(`nav-${tab}-btn`).style.display !== 'none') switchView(tab);
+}
