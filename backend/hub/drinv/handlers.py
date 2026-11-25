@@ -225,8 +225,7 @@ def tally_next(req):
     except ValueError as e:
         raise ApiError(str(e))
     reopened = service.gone_from_tally(t)
-    if reopened:
-        service.recheck()
+    service.recheck()
     return dict(last=t["last"], next=t["next"], source=t["source"], count=t["count"], reopened=reopened)
 
 

@@ -31,10 +31,20 @@ function renderConfig(c) {
 }
 
 function shown() {
-    const ds = DI.data ? DI.data.drafts : [];
-    if (DI.filter === 'all') return ds;
+    let ds = DI.data ? DI.data.drafts : [];
+    const q = (DI.q || '').trim().toLowerCase();
+    if (q) ds = ds.filter(d => [d.inv_no, d.dr_no, d.part, d.po_no, d.item_name, d.remarks].some(x => (x || '').toLowerCase().includes(q)));
+    if (DI.filter === 'all' || q) return ds;          // a search looks in every status
     if (DI.filter === 'open') return ds.filter(d => d.status !== 'sent');
     return ds.filter(d => d.status === DI.filter);
+}
+
+// "DR 12070477" in a message -> show that invoice (any status)
+function findInvoice(q) {
+    DI.q = q;
+    const box = document.getElementById('di-q');
+    if (box) box.value = q;
+    render();
 }
 
 function render() {
@@ -42,7 +52,10 @@ function render() {
     const cnt = { open: (c.draft || 0) + (c.verified || 0), draft: c.draft || 0, verified: c.verified || 0, sent: c.sent || 0 };
     cnt.all = cnt.open + cnt.sent;
     document.getElementById('di-filter').innerHTML = FILTERS.map(([k, l]) =>
-        `<button class="di-chip ${DI.filter === k ? 'on' : ''}" onclick="DI.filter='${k}';render()">${l} <b>${cnt[k]}</b></button>`).join('');
+        `<button class="di-chip ${DI.filter === k ? 'on' : ''}" onclick="DI.filter='${k}';DI.q='';render()">${l} <b>${cnt[k]}</b></button>`).join('') +
+        `<input type="search" id="di-q" placeholder="Find invoice no, DR, part, PO…" value="${esc(DI.q || '')}"
+            style="margin-left:auto;min-width:220px;padding:.35rem .55rem;border:1px solid #cbd5e1;border-radius:8px"
+            oninput="DI.q=this.value;render();const b=document.getElementById('di-q');b.focus();b.setSelectionRange(b.value.length,b.value.length)">`;
     const ds = shown();
     const ids = new Set(ds.map(d => d.id));
     DI.ticked = new Set([...DI.ticked].filter(i => ids.has(i)));
@@ -90,7 +103,7 @@ function render() {
                 : `<textarea class="ed small" rows="2" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`}</td>
             <td><span class="di-b ${d.status}${st === 'Ready' ? ' ready' : ''}">${st}</span>
                 ${d.verified_by && d.status !== 'draft' ? `<div class="di-small">${esc(d.verified_by)}</div>` : ''}</td>
-            </tr>` + (sub ? `<tr class="${d.status} sub"><td></td><td colspan="10"><div class="di-iss">${notes.map(i => `<span class="${i.level}">${esc(i.text)}</span>`).join('')}
+            </tr>` + (sub ? `<tr class="${d.status} sub"><td></td><td colspan="10"><div class="di-iss">${notes.map(i => `<span class="${i.level}">${esc(i.text).replace(/DR (\d{7,9})/g, (m, dr) => `<a href="#" onclick="findInvoice('${dr}');return false">DR ${dr}</a>`)}</span>`).join('')}
                 ${d.tally_msg && d.status !== 'sent' ? `<span class="error">Tally: ${esc(d.tally_msg)}</span>` : ''}</div></td></tr>` : '');
         }).join('') + '</tbody>';
     const sum = ds.reduce((a, d) => a + (d.total || 0), 0);
@@ -347,6 +360,11 @@ async function sendToTally() {
                 else { bad++; logLine(`${it.inv_no}: Tally said: ${r.error}`); }
             } catch (e) { bad++; logLine(`${it.inv_no}: ${e.message}`); if (e.message === BRIDGE_HELP) break; }
         }
+        // read back from Tally the numbers it really gave (its automatic numbering may differ from the hub's)
+        try {
+            const back = await apiJson('/api/drinv/tally-next', 'POST', await tallyAnswer((await api('/api/drinv/numbers-request')).xml));
+            logLine(`Tally's last invoice now: ${back.last}`);
+        } catch (e) { logLine(`Could not read the numbers back from Tally: ${e.message}`); }
         showToast(`${ok} invoice(s) created in Tally${bad ? `, ${bad} not` : ''}. Now generate the IRN in Tally.`, bad ? 'danger' : 'success', 9000);
     } catch (e) { showToast(e.message, 'danger', 9000); }
     btn.disabled = false;

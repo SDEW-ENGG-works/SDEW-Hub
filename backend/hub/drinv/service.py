@@ -996,7 +996,7 @@ def numbers_request():
 <ID>SDEWHubInvNos</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{comp}
 <SVFROMDATE TYPE="Date">{f(d1)}</SVFROMDATE><SVTODATE TYPE="Date">{f(fy_end)}</SVTODATE></STATICVARIABLES>
 <TDL><TDLMESSAGE><COLLECTION NAME="SDEWHubInvNos" ISMODIFY="No"><TYPE>Voucher</TYPE>
-<FETCH>Date, VoucherNumber, VoucherTypeName</FETCH><FILTER>SDEWHubIsInvType</FILTER></COLLECTION>
+<FETCH>Date, VoucherNumber, VoucherTypeName, Narration, PartyLedgerName, IsCancelled</FETCH><FILTER>SDEWHubIsInvType</FILTER></COLLECTION>
 <SYSTEM TYPE="Formulae" NAME="SDEWHubIsInvType">$VoucherTypeName = "{_x(cfg['vtype'])}"</SYSTEM>
 </TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>"""
 
@@ -1017,7 +1017,7 @@ def tally_last(text):
     if "<ENVELOPE" not in (text or "").upper():
         raise ValueError("Tally gave no answer for the invoice numbers: " + re.sub(r"\s+", " ", (text or "")[:150]))
     vt = _norm(config()["vtype"])
-    nos = set()
+    nos, by_dr = set(), {}
     for m in re.finditer(r"<VOUCHER\b([^>]*)>(.*?)</VOUCHER>", text, re.S):
         v = m.group(2)
         t = re.search(r"<VOUCHERTYPENAME[^>]*>(.*?)</VOUCHERTYPENAME>", v, re.S)
@@ -1026,7 +1026,13 @@ def tally_last(text):
             continue
         n = re.search(r"<VOUCHERNUMBER[^>]*>(.*?)</VOUCHERNUMBER>", v, re.S)
         if n:
-            nos.add(html.unescape(n.group(1)).strip())
+            no = html.unescape(n.group(1)).strip()
+            nos.add(no)
+            nar = re.search(r"<NARRATION[^>]*>(.*?)</NARRATION>", v, re.S)
+            canc = re.search(r"<ISCANCELLED[^>]*>\s*Yes", v)
+            for dr in re.findall(r"DR\s*(\d{7,9})", html.unescape(nar.group(1)) if nar else ""):
+                if not canc:
+                    by_dr.setdefault(dr, no)
     sufs = {}
     for n in nos:
         k, sf = _split_no(n)
@@ -1045,7 +1051,7 @@ def tally_last(text):
     if not best:
         raise ValueError("No GST SALES NEW invoice found in Tally's answer or in the hub")
     return dict(last=f"{best}{main}", next=f"{best + 1}{main}", numbers=nos, best=best, suffix=main, source=src,
-                count=len(nos))
+                count=len(nos), by_dr=by_dr)
 
 
 def _clear_others(con, numbers, ids):
@@ -1097,9 +1103,16 @@ def gone_from_tally(t):
         return []
     since = (date.today() - timedelta(days=44)).isoformat()
     con = get_db()
-    out = []
+    out, renumbered = [], []
+    by_dr = t.get("by_dr") or {}
     for d in rows("SELECT id, inv_no, dr_no FROM drinv_drafts WHERE status='sent' AND inv_date>=? AND inv_no<>''", (since,)):
-        if d["inv_no"].strip() not in t["numbers"]:
+        real = by_dr.get(d["dr_no"])
+        if real and real != d["inv_no"].strip():
+            # Tally saved it under another number (its own automatic numbering): the hub follows Tally
+            con.execute("UPDATE drinv_drafts SET inv_no=?, tally_msg=? WHERE id=?",
+                        (real, f"In Tally as {real} (sent as {d['inv_no']})", d["id"]))
+            renumbered.append(f"{d['inv_no']} → {real}")
+        elif not real and d["inv_no"].strip() not in t["numbers"]:
             con.execute("UPDATE drinv_drafts SET status='draft', inv_no='', tally_msg=? WHERE id=?",
                         (f"{d['inv_no']} is not in Tally any more (deleted there?) - send it again", d["id"]))
             out.append(d["inv_no"])
@@ -1113,8 +1126,10 @@ def gone_from_tally(t):
             con.execute("UPDATE gp_tally_vouchers SET deleted=1, cancelled=1 WHERE vkey=?", (r["vkey"],))
         if gone:
             log_event("Not in Tally any more", "hub's copy of Tally: " + ", ".join(r["vno"] for r in gone) + " marked deleted")
-    if out or gone:
+    if out or gone or renumbered:
         con.commit()
+    if renumbered:
+        log_event("Number in Tally", "Tally saved hub invoices under its own numbers: " + ", ".join(renumbered), renumbered)
     if out:
         log_event("Not in Tally any more", ", ".join(out) + " - back to draft", out)
     return out
