@@ -727,3 +727,159 @@ def tally_result(did, text):
     con.commit()
     log_event("Tally refused", f"{d.get('inv_no')}: {msg}", [d.get("inv_no")])
     return dict(ok=False, error=msg)
+
+
+# ---------------------------------------------------------------- "Read Tally structure"
+# Reads from Tally, through the bridge, exactly how it keeps a TAFE invoice: chosen invoices in full (Day Book,
+# every field incl. the TDL fields Title / NO OF PICES ..., buyer / consignee address, Round Off line) and the
+# party, Round Off and sales ledgers. Kept raw in drinv_samples (and data/tally_samples on the PC hub) so the
+# hub's invoices can be made to match Tally exactly.
+SAMPLE_MAX = 400_000
+
+
+def structure_defaults():
+    """Suggested invoices: the newest invoice typed in Tally for MDU and for DBR, and the newest sent by the hub."""
+    cfg = config()
+    hub_nos = {r["inv_no"] for r in rows("SELECT inv_no FROM drinv_drafts WHERE status='sent'")}
+    out = []
+    for p in cfg["plants"].values():
+        for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? AND party=? AND cancelled=0 "
+                      "ORDER BY vdate DESC, vno DESC LIMIT 30", (cfg["vtype"], p["party"])):
+            if r["vno"] not in hub_nos:
+                out.append(r["vno"])
+                break
+    r = one("SELECT inv_no FROM drinv_drafts WHERE status='sent' ORDER BY sent_at DESC LIMIT 1")
+    if r:
+        out.append(r["inv_no"])
+    return out
+
+
+def _ledger_request(company, name):
+    comp = f"<SVCURRENTCOMPANY>{_x(company)}</SVCURRENTCOMPANY>" if company else ""
+    q = name.replace('"', "")
+    return f"""<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE>
+<ID>SDEWHubOneLedger</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{comp}
+</STATICVARIABLES><TDL><TDLMESSAGE><COLLECTION NAME="SDEWHubOneLedger" ISMODIFY="No"><TYPE>Ledger</TYPE>
+<NATIVEMETHOD>*</NATIVEMETHOD><FETCH>*, Address.*, LedMailingDetails.*, LedGSTRegDetails.*, LanguageName.*</FETCH>
+<FILTER>SDEWHubThisLedger</FILTER></COLLECTION>
+<SYSTEM TYPE="Formulae" NAME="SDEWHubThisLedger">$Name = "{_x(q)}"</SYSTEM></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>"""
+
+
+def _voucher_request(company, vno):
+    comp = f"<SVCURRENTCOMPANY>{_x(company)}</SVCURRENTCOMPANY>" if company else ""
+    q = vno.replace('"', "")
+    return f"""<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE>
+<ID>SDEWHubOneVoucher</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{comp}
+<SVFROMDATE TYPE="Date">01-Apr-2026</SVFROMDATE><SVTODATE TYPE="Date">31-Mar-2027</SVTODATE>
+</STATICVARIABLES><TDL><TDLMESSAGE><COLLECTION NAME="SDEWHubOneVoucher" ISMODIFY="No"><TYPE>Voucher</TYPE>
+<NATIVEMETHOD>*</NATIVEMETHOD><FETCH>*, AllInventoryEntries.*, LedgerEntries.*, AllLedgerEntries.*, InvoiceOrderList.*</FETCH>
+<FILTER>SDEWHubThisVoucher</FILTER></COLLECTION>
+<SYSTEM TYPE="Formulae" NAME="SDEWHubThisVoucher">$VoucherNumber = "{_x(q)}"</SYSTEM></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>"""
+
+
+def structure_plan(nos):
+    """-> requests for the browser (or the PC hub) to send to Tally: Day Book of each invoice's date, the same
+    invoice as a collection, and the ledgers. Unknown invoice numbers are reported."""
+    from ..grin.services.tally import daybook_request
+    cfg = config()
+    nos = [n.strip() for n in nos if n and n.strip()]
+    reqs, unknown, dates = [], [], {}
+    for n in nos:
+        r = one("SELECT vdate FROM gp_tally_vouchers WHERE vno=? ORDER BY vdate DESC LIMIT 1", (n,)) or \
+            one("SELECT inv_date vdate FROM drinv_drafts WHERE inv_no=?", (n,))
+        if not r or not r["vdate"]:
+            unknown.append(n)
+            continue
+        dates.setdefault(r["vdate"], []).append(n)
+        reqs.append(dict(kind="voucher", ref=n, want=[n], xml=_voucher_request(cfg["company"], n)))
+    for d, want in sorted(dates.items()):
+        dd = date.fromisoformat(d)
+        reqs.append(dict(kind="daybook", ref=d, want=want, xml=daybook_request(cfg["company"], dd, dd)))
+    names = [p["party"] for p in cfg["plants"].values()] + [cfg["round_off"]] + \
+            sorted({v for p in cfg["plants"].values() for v in p["sales"].values()})
+    for nm in names:
+        reqs.append(dict(kind="ledger", ref=nm, want=[], xml=_ledger_request(cfg["company"], nm)))
+    return dict(requests=reqs, unknown=unknown)
+
+
+def _summary(v):
+    """What matters in one voucher: TDL (UDF) fields, address / party tags, the ledger lines as Tally wrote them."""
+    head = re.sub(r"<(ALLINVENTORYENTRIES|INVENTORYENTRIES)\.LIST>.*?</\1\.LIST>", "", v, flags=re.S)
+    udf = sorted(set(re.findall(r"<(UDF:[A-Za-z0-9_]+)\.LIST([^>]*)>", head)))
+    addr = [re.sub(r"\s+", " ", m.group(0))[:300] for m in re.finditer(r"<([A-Z]*ADDRESS)\.LIST\b[^>]*>(.*?)</\1\.LIST>", head, re.S)
+            if re.sub(r"<[^>]+>|\s", "", m.group(2))]
+    led = []
+    for m in re.finditer(r"<(LEDGERENTRIES|ALLLEDGERENTRIES)\.LIST>(.*?)</\1\.LIST>", v, re.S):
+        b = m.group(2)
+        f = dict(re.findall(r"<(LEDGERNAME|ISDEEMEDPOSITIVE|ISLASTDEEMEDPOSITIVE|ISPARTYLEDGER|AMOUNT|ROUNDTYPE|"
+                            r"METHODTYPE|ROUNDLIMIT|VATEXPAMOUNT)>([^<]*)<", b))
+        led.append(f)
+    return dict(udf=[dict(tag=t, attrs=a.strip()) for t, a in udf], address=addr, ledgers=led,
+                tags=sorted(set(t for t, val in re.findall(r"<([A-Z][A-Z0-9]*)>([^<]+)</\1>", head)
+                                if val.strip() and t.startswith(("PARTY", "CONSIGNEE", "BASICBUYER", "BUYER", "STATE",
+                                                                  "PLACEOFSUPPLY", "GSTREG", "COUNTRY")))))
+
+
+def structure_save(kind, ref, text, want=None):
+    """One Tally answer -> drinv_samples rows (the wanted invoices only, for a Day Book). -> short report."""
+    from .. import config as hubconfig
+    want = set(want or [])
+    err = re.search(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
+    saved = []
+    con = get_db()
+
+    def keep(k, r, body, summ):
+        body = body[:SAMPLE_MAX]
+        con.execute("INSERT INTO drinv_samples(at, user, kind, ref, summary, text) VALUES(?,?,?,?,?,?)",
+                    (_now(), _user(), k, r, json.dumps(summ), body))
+        saved.append(dict(kind=k, ref=r, size=len(body), summary=summ))
+        if not hubconfig.ON_VERCEL:        # the PC hub: also as files, data/tally_samples/
+            try:
+                import os
+                d = os.path.join(hubconfig.DATA_DIR, "tally_samples")
+                os.makedirs(d, exist_ok=True)
+                fn = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{datetime.now():%Y%m%d_%H%M%S}_{k}_{r}") + ".xml"
+                with open(os.path.join(d, fn), "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            except Exception:  # noqa: BLE001
+                pass
+
+    if err or "<ENVELOPE" not in (text or "").upper():
+        keep(kind + "-error", ref, text or "", dict(error=(html.unescape(err.group(1)) if err else (text or "")[:300])))
+    elif kind in ("voucher", "daybook"):
+        found = 0
+        for m in re.finditer(r"<VOUCHER\b[^>]*>.*?</VOUCHER>", text, re.S):
+            v = m.group(0)
+            no = re.search(r"<VOUCHERNUMBER>(.*?)</VOUCHERNUMBER>", v)
+            no = html.unescape(no.group(1)).strip() if no else ""
+            if want and no not in want:
+                continue
+            found += 1
+            keep(kind, no or ref, v, _summary(v))
+        if not found:
+            keep(kind + "-empty", ref, text[:SAMPLE_MAX], dict(error=f"None of {', '.join(sorted(want))} in Tally's answer",
+                                                            vouchers=len(re.findall(r"<VOUCHER\b", text))))
+    else:
+        keep(kind, ref, text, dict(size=len(text)))
+    con.commit()
+    out = dict(saved=[dict(kind=x["kind"], ref=x["ref"], size=x["size"], summary=x["summary"]) for x in saved])
+    if kind == "daybook" and not err:
+        hub_nos = {r["inv_no"] for r in rows("SELECT inv_no FROM drinv_drafts WHERE status='sent'")}
+        office = [x for x in saved if x["kind"] == "daybook" and x["ref"] not in hub_nos]
+        if office:                       # an invoice typed in Tally: learn the format from it too
+            out["learn"] = learn(text, "")
+    return out
+
+
+def samples(limit=60):
+    return [dict(r, summary=json.loads(r["summary"] or "{}")) for r in
+            rows("SELECT id, at, user, kind, ref, summary, LENGTH(text) size FROM drinv_samples ORDER BY id DESC LIMIT ?",
+                 (limit,))]
+
+
+def samples_text(ids=None):
+    q = "SELECT * FROM drinv_samples" + (f" WHERE id IN ({','.join('?' * len(ids))})" if ids else "") + " ORDER BY id"
+    parts = []
+    for r in rows(q, tuple(ids or ())):
+        parts.append(f"<!-- ===== #{r['id']} {r['kind']} {r['ref']} read {r['at']} by {r['user']} ===== -->\n{r['text']}\n")
+    return "".join(parts)

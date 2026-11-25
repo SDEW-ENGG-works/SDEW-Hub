@@ -313,5 +313,53 @@ async function refreshPage() {
     showToast('Page cleared — upload the new DRs', 'success');
 }
 
+// ---------- Read Tally structure
+async function loadStructure() {
+    let r;
+    try { r = await api('/api/drinv/structure'); } catch (e) { return; }
+    const box = document.getElementById('st-nos');
+    if (!box.value && r.defaults.length) box.value = r.defaults.join(', ');
+    const t = document.getElementById('st-table');
+    t.innerHTML = r.samples.length ? `<thead><tr><th>When</th><th>What</th><th>Size</th><th>Found</th></tr></thead><tbody>` +
+        r.samples.map(x => {
+            const s = x.summary || {};
+            const found = s.error ? `<span style="color:#b91c1c">${esc(s.error)}</span>` : [
+                s.udf ? `<div><b>Fields:</b> ${esc(s.udf.map(u => u.tag + ' ' + u.attrs).join(' · ') || 'none')}</div>` : '',
+                s.address ? `<div><b>Address:</b> ${esc(s.address.join(' · ') || 'none')}</div>` : '',
+                s.ledgers ? `<div><b>Ledger lines:</b> ${esc(s.ledgers.map(l => `${l.LEDGERNAME} ${l.AMOUNT} (${l.ISDEEMEDPOSITIVE}/${l.ISLASTDEEMEDPOSITIVE || '-'})`).join(' · '))}</div>` : '',
+                s.tags ? `<div class="di-small">${esc(s.tags.join(', '))}</div>` : '',
+                s.size ? `${inr(s.size, 0)} characters` : ''].join('');
+            return `<tr><td style="white-space:nowrap">${esc(when(x.at))}<div class="di-small">${esc(x.user || '')}</div></td>
+                <td><b>${esc(x.kind)}</b><div>${esc(x.ref)}</div></td><td class="num">${inr(x.size || 0, 0)}</td>
+                <td style="font-size:.75rem">${found} <a href="/api/drinv/structure-download?ids=${x.id}" download>download</a></td></tr>`;
+        }).join('') + '</tbody>' : '<tr><td class="muted" style="padding:.8rem">Nothing read yet.</td></tr>';
+}
+
+async function readStructure() {
+    const btn = document.getElementById('btn-structure');
+    const nos = document.getElementById('st-nos').value.split(/[,\s]+/).filter(Boolean);
+    btn.disabled = true;
+    document.getElementById('di-log').textContent = '';
+    try {
+        const plan = await apiJson('/api/drinv/structure-plan', 'POST', { nos });
+        if (plan.unknown.length) logLine(`Not found in the hub's Tally data (pull from Tally first, or check the number): ${plan.unknown.join(', ')}`);
+        for (const q of plan.requests) {
+            logLine(`Reading ${q.kind} ${q.ref} from Tally…`);
+            try {
+                const text = await tallyCall(q.xml);
+                const gz = await gzipB64(text);
+                const r = await apiJson('/api/drinv/structure-save', 'POST', Object.assign({ kind: q.kind, ref: q.ref, want: q.want }, gz ? { gz } : { text }));
+                r.saved.forEach(x => logLine(`  saved ${x.kind} ${x.ref} (${x.size} characters)${x.summary && x.summary.error ? ' - ' + x.summary.error : ''}`));
+                if (r.learn) logLine(`  ${r.learn.message}`);
+            } catch (e) { logLine(`  ${e.message}`); if (e.message === BRIDGE_HELP) break; }
+        }
+        showToast('Tally structure read and saved in the hub', 'success');
+    } catch (e) { showToast(e.message, 'danger', 9000); }
+    btn.disabled = false;
+    loadStructure();
+    loadDrafts();
+}
+
 document.getElementById('inv-date').value = todayIso();
 loadDrafts();
+loadStructure();

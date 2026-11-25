@@ -171,6 +171,9 @@ CREATE TABLE IF NOT EXISTS drinv_drafts(
     igst REAL, round_off REAL, total REAL, remarks TEXT, status TEXT, issues TEXT, file_name TEXT,
     created_by TEXT, created_at TEXT, verified_by TEXT, verified_at TEXT, sent_by TEXT, sent_at TEXT,
     tally_msg TEXT, last_rate REAL, last_inv TEXT, title TEXT, UNIQUE(dr_no, part));
+-- "Read Tally structure": raw XML Tally gave for chosen invoices and ledgers, to match Tally's own format
+CREATE TABLE IF NOT EXISTS drinv_samples(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, kind TEXT, ref TEXT, summary TEXT, text TEXT);
 CREATE TABLE IF NOT EXISTS drinv_log(
     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, action TEXT, detail TEXT, invoices TEXT);
 CREATE TABLE IF NOT EXISTS m_plants(

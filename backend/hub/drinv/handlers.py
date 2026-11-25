@@ -2,7 +2,7 @@ import base64
 import gzip
 import urllib.parse
 
-from . import route
+from . import Response, route
 from .. import config as hubconfig
 from ..http import ApiError
 from . import service
@@ -129,3 +129,34 @@ def tally_proxy(req):
         return dict(text=tally.post(load_settings()["tally_url"], (req.json or {}).get("xml") or "", timeout=120))
     except Exception as e:  # noqa: BLE001
         raise ApiError(f"Tally is not answering: {e}")
+
+
+# ---------------------------------------------------------------- Read Tally structure
+@route("POST", r"/api/structure-plan")
+def structure_plan(req):
+    nos = (req.json or {}).get("nos")
+    if not nos:
+        nos = service.structure_defaults()
+    return dict(service.structure_plan(nos), nos=nos)
+
+
+@route("POST", r"/api/structure-save")
+def structure_save(req):
+    b = req.json or {}
+    text = b.get("text") or ""
+    if b.get("gz"):
+        text = gzip.decompress(base64.b64decode(b["gz"])).decode("utf-8", errors="replace")
+    return service.structure_save(b.get("kind") or "", b.get("ref") or "", text, b.get("want") or [])
+
+
+@route("GET", r"/api/structure")
+def structure_list(req):
+    return dict(samples=service.samples(), defaults=service.structure_defaults())
+
+
+@route("GET", r"/api/structure-download")
+def structure_download(req):
+    ids = [int(x) for x in (req.arg("ids") or "").split(",") if x.strip().isdigit()]
+    body = service.samples_text(ids or None).encode("utf-8")
+    return Response(body, content_type="text/xml; charset=utf-8", headers={
+        "Content-Disposition": 'attachment; filename="tally_structure.xml"'})

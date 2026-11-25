@@ -93,6 +93,23 @@
             </div>
 
             <div class="card">
+                <div class="card-header-flex">
+                    <div class="card-title">Read Tally structure</div>
+                    <a class="btn btn-secondary btn-sm" href="/api/drinv/structure-download" download>Download all (XML)</a>
+                </div>
+                <p class="hint">Reads from this computer's Tally exactly how it keeps a TAFE invoice — every field (Title, NO OF PICES,
+                    NO OF PACKAGES, TOTAL NOS …), the buyer / consignee address, the Round Off line — and the party, Round Off and
+                    sales ledgers. Everything is saved in the hub, so the invoices sent from here can be made to match Tally exactly.
+                    Give one invoice typed by hand for MDU, one for DBR, and one sent from the hub.</p>
+                <div class="di-row">
+                    <label class="di-small" for="st-nos">Invoice numbers</label>
+                    <input type="text" id="st-nos" style="flex:1;min-width:260px" placeholder="16207/26-27, 16190/26-27, 16208/26-27">
+                    <button class="btn btn-primary btn-sm" id="btn-structure" onclick="readStructure()">Read Tally structure</button>
+                </div>
+                <div class="table-wrapper" style="max-height:420px;overflow:auto"><table class="data-table compact" id="st-table"></table></div>
+            </div>
+
+            <div class="card">
                 <div class="card-title">History</div>
                 <p class="hint">Every upload, numbering, verification and send to Tally, with the time and who did it.</p>
                 <div class="table-wrapper" style="max-height:340px;overflow:auto"><table class="data-table compact" id="di-history"></table></div>
