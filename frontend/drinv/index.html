@@ -67,6 +67,11 @@
                         <button class="btn btn-secondary btn-sm" onclick="learnFromTally()">Learn invoice format from Tally</button>
                         <span class="di-small">reads the last TAFE invoice of each plant (PO NUMBER, NO OF PICES … fields)</span>
                     </div>
+                    <div class="di-row">
+                        <label class="btn btn-secondary btn-sm" style="cursor:pointer">Upload a Tally invoice (XML)
+                            <input type="file" accept=".xml,.txt" style="display:none" onchange="learnFile(this.files[0]); this.value=''"></label>
+                        <span class="di-small">or export one TAFE invoice from Tally (Alt+E › Export › XML) and upload it here — one for MDU and one for DBR</span>
+                    </div>
                 </div>
             </div>
 

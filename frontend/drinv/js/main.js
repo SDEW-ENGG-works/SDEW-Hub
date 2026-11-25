@@ -73,8 +73,10 @@ function render() {
                 ${ed(d, 'item_name', d.item_name, d.item_name ? '' : 'miss', 'placeholder="Tally stock item name"')}
                 <div class="di-small">DR: ${num(d.dr_req)} ${esc(d.bin || '')} × ${num(d.dr_size)} = ${num(d.dr_qty)}</div></td>
             <td style="width:70px">${ed(d, 'qty', num(d.qty), 'num' + (d.qty ? '' : ' miss'))}</td>
-            <td style="width:70px">${ed(d, 'packages', num(d.packages), 'num' + (d.packages ? '' : ' miss'))}</td>
-            <td style="width:70px">${ed(d, 'pieces', num(d.pieces), 'num' + (d.pieces ? '' : ' miss'))}</td>
+            <td style="width:80px">${ed(d, 'packages', num(d.packages), 'num' + (d.packages ? '' : ' miss'), 'placeholder="enter"')}
+                <div class="di-small">DR: ${num(d.dr_req)} ${esc(d.bin || '')}</div></td>
+            <td style="width:80px">${ed(d, 'pieces', num(d.pieces), 'num' + (d.pieces ? '' : ' miss'), 'placeholder="enter"')}
+                <div class="di-small">DR: ${num(d.dr_size)} each</div></td>
             <td style="width:64px">${ed(d, 'kgs', d.kgs, 'num', 'placeholder="—"')}</td>
             <td style="width:80px">${ed(d, 'title', d.title ?? 'KANBAN')}</td>
             <td style="width:84px">${ed(d, 'rate', d.rate == null ? '' : (+d.rate).toFixed(2), 'num' + (d.rate ? '' : ' miss'))}
@@ -241,6 +243,16 @@ async function learnFromTally(quiet = false) {
     } catch (e) { logLine(`Error: ${e.message}`); showToast(e.message, 'danger', 9000); return false; }
 }
 
+async function learnFile(f) {
+    if (!f) return;
+    try {
+        const r = await api(`/api/drinv/learn-file?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+        logLine(r.message);
+        showToast(r.message, r.ok ? 'success' : 'danger', 9000);
+        loadDrafts();
+    } catch (e) { showToast(e.message, 'danger', 9000); }
+}
+
 async function sendToTally() {
     const sel = shown().filter(d => DI.ticked.has(d.id) && d.status === 'verified').map(d => d.id);
     const ids = sel.length ? sel : DI.data.drafts.filter(d => d.status === 'verified').map(d => d.id);
@@ -257,10 +269,12 @@ async function sendToTally() {
             await learnFromTally(true);
             plan = await apiJson('/api/drinv/send-plan', 'POST', { ids });
         }
-        if (plan.no_fields.length && !await confirmBox('Tally fields will be empty',
-            `The invoice format of ${plan.no_fields.join(', ')} is not learned from Tally, so NO OF PICES, NO OF PACKAGES, ` +
-            'TOTAL NOS, Title and TOTAL KGS would reach Tally empty. Press Cancel and use "Learn invoice format from Tally" ' +
-            '(see the message there), or Yes to send anyway and fill them in Tally.')) { btn.disabled = false; return; }
+        if (plan.no_fields.length) {          // never send without the packing fields: Tally would get them empty
+            logLine(`Not sent: the invoice format of ${plan.no_fields.join(', ')} is not learned, so NO OF PICES, ` +
+                'NO OF PACKAGES, TOTAL NOS and Title cannot be written in Tally. Upload a Tally invoice (XML) for it first.');
+            showToast('Not sent - learn the invoice format first (Upload a Tally invoice, XML)', 'danger', 9000);
+            btn.disabled = false; return;
+        }
         if (plan.skipped.length) logLine(`Not verified, skipped: ${plan.skipped.join(', ')}`);
         let ok = 0, bad = 0;
         for (const it of plan.items) {

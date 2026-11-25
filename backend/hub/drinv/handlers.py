@@ -94,6 +94,16 @@ def learn(req):
     return service.learn(text, service.config().get("company", ""))
 
 
+@route("POST", r"/api/learn-file")
+def learn_file(req):
+    """A voucher exported from Tally by hand (Alt+E > Export > XML) -> the invoice format, like Learn from Tally."""
+    raw = req._body_bytes or b""
+    if not raw:
+        raise ApiError("Empty file")
+    from ..grin.services.tally import decode
+    return service.learn(decode(raw), "file " + urllib.parse.unquote(req.arg("name") or ""))
+
+
 @route("POST", r"/api/send-plan")
 def send_plan(req):
     try:

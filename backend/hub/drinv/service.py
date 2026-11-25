@@ -292,7 +292,7 @@ def add_pdf(name, data, inv_date=None):
         d = dict(dr_no=x["dr_no"], part=x["part"], plant=_plant(x["order_no"]), po_no=x["order_no"],
                  descr=x["descr"], bin=x["bin"], dr_req=x["req"], dr_size=x["size"], dr_qty=x["qty"],
                  item_name=h.get("item_name") or "", gst_rate=gst, inv_no="", inv_date=inv_date, qty=x["qty"],
-                 pieces=x["size"], packages=x["req"], kgs="", rate=rate, rate_po=rate,
+                 pieces=None, packages=None, kgs="", rate=rate, rate_po=rate,   # entered by the office (packing)
                  remarks=remarks_for(h, x["req"], x["dr_no"], x["bin"]), status="draft", file_name=name,
                  created_by=_user(), created_at=_now(), last_rate=h.get("last_rate"), last_inv=h.get("last_inv"),
                  title=DEFAULT_TITLE)
