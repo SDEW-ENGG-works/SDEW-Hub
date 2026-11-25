@@ -77,7 +77,9 @@
                 <div class="di-bar">
                     <label class="di-small">Number from</label>
                     <input type="text" id="start-no" style="width:130px;padding:.35rem .5rem;border:1px solid #cbd5e1;border-radius:8px">
+                    <button class="btn btn-secondary btn-sm" onclick="nextFromTally()" title="Ask Tally for its last GST SALES NEW number">Get from Tally</button>
                     <button class="btn btn-secondary btn-sm" onclick="giveNumbers()">Give numbers to ticked</button>
+                    <span class="di-small" id="tally-last"></span>
                     <span class="sp"></span>
                     <button class="btn btn-secondary btn-sm" onclick="verify(false)">Back to draft</button>
                     <button class="btn btn-primary btn-sm" onclick="verify(true)">Verify ticked</button>

@@ -195,3 +195,36 @@ def dc_save(req):
 def dc_list(req):
     from . import dc
     return dc.listing(req.arg("q") or "", int(req.arg("limit") or 300))
+
+
+# ---------------------------------------------------------------- invoice numbers from Tally
+@route("GET", r"/api/numbers-request")
+def numbers_request(req):
+    return dict(xml=service.numbers_request())
+
+
+def _text(b):
+    text = b.get("text") or ""
+    if b.get("gz"):
+        text = gzip.decompress(base64.b64decode(b["gz"])).decode("utf-8", errors="replace")
+    return text
+
+
+@route("POST", r"/api/tally-next")
+def tally_next(req):
+    """Tally's answer -> its last invoice number and the next one (for the 'Number from' box)."""
+    try:
+        t = service.tally_last(_text(req.json or {}))
+    except ValueError as e:
+        raise ApiError(str(e))
+    return dict(last=t["last"], next=t["next"])
+
+
+@route("POST", r"/api/assign-numbers")
+def assign_numbers(req):
+    b = req.json or {}
+    try:
+        r = service.assign_from_tally([int(i) for i in (b.get("ids") or [])], _text(b))
+    except ValueError as e:
+        raise ApiError(str(e))
+    return r

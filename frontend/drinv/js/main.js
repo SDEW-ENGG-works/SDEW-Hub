@@ -209,6 +209,22 @@ async function tallyCall(xml) {
     return text;
 }
 
+// Tally's answer to a request, ready to post to the hub (gzip when the browser can)
+async function tallyAnswer(xml) {
+    const text = await tallyCall(xml);
+    const gz = await gzipB64(text);
+    return gz ? { gz } : { text };
+}
+
+async function nextFromTally() {
+    try {
+        const r = await apiJson('/api/drinv/tally-next', 'POST', await tallyAnswer((await api('/api/drinv/numbers-request')).xml));
+        document.getElementById('start-no').value = r.next;
+        document.getElementById('tally-last').textContent = r.last ? `Tally's last: ${r.last}` : '';
+        showToast(`Tally's last invoice is ${r.last || '—'}: numbers start from ${r.next}`, 'success', 6000);
+    } catch (e) { showToast(e.message, 'danger', 9000); }
+}
+
 async function gzipB64(text) {
     if (typeof CompressionStream === 'undefined') return null;
     const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
@@ -254,12 +270,19 @@ async function sendToTally() {
     const sel = shown().filter(d => DI.ticked.has(d.id) && d.status === 'verified').map(d => d.id);
     const ids = sel.length ? sel : DI.data.drafts.filter(d => d.status === 'verified').map(d => d.id);
     if (!ids.length) return showToast('No verified invoices to send', 'danger');
-    if (!await confirmBox('Send to Tally?', `${ids.length} verified invoice(s) will be created in Tally as ${DI.data.config.vtype}. ` +
+    if (!await confirmBox('Send to Tally?', `${ids.length} verified invoice(s) will be created in Tally as ${DI.data.config.vtype}, numbered from Tally's last invoice number + 1 ` +
+        '(a number you typed is kept if it is still free). ' +
         'Then generate the IRN (e-invoice) for them in Tally.')) return;
     const btn = document.getElementById('btn-send');
     btn.disabled = true;
     document.getElementById('di-log').textContent = '';
     try {
+        // invoice numbers straight from Tally: its last number now (invoices typed by hand included) + 1, 2, ...
+        logLine('Asking Tally for its last invoice number…');
+        const nr = await apiJson('/api/drinv/assign-numbers', 'POST', Object.assign({ ids }, await tallyAnswer((await api('/api/drinv/numbers-request')).xml)));
+        logLine(`Tally's last invoice: ${nr.last || '—'}` + (nr.changed.length
+            ? `. Numbered: ${nr.changed.map(c => (c.old ? c.old + ' → ' : '') + c.new).join(', ')}` : '. Numbers kept.'));
+        document.getElementById('tally-last').textContent = nr.last ? `Tally's last: ${nr.last}` : '';
         let plan = await apiJson('/api/drinv/send-plan', 'POST', { ids });
         if (plan.need_learn.length) {
             logLine(`Learning the invoice format for ${plan.need_learn.join(', ')} first…`);

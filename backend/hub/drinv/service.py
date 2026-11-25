@@ -2,7 +2,7 @@
 import html
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from ..db import get_db, get_setting, one, rows, set_setting
@@ -245,7 +245,7 @@ def check(d, cfg=None, taken=None):
         add("error", "GST % not set")
     no = (d.get("inv_no") or "").strip()
     if not no:
-        add("error", "Invoice number not entered")
+        add("info", "Invoice number: given automatically from Tally's last number when you send")
     else:
         if one("SELECT vno FROM gp_tally_vouchers WHERE vno=? AND vtype LIKE '%SALES%'", (no,)):
             add("error", f"Invoice {no} already exists in Tally")
@@ -916,3 +916,81 @@ def samples_text(ids=None):
     for r in rows(q, tuple(ids or ())):
         parts.append(f"<!-- ===== #{r['id']} {r['kind']} {r['ref']} read {r['at']} by {r['user']} ===== -->\n{r['text']}\n")
     return "".join(parts)
+
+
+
+# ---------------------------------------------------------------- invoice numbers straight from Tally
+# Right before sending, the hub asks Tally for the GST SALES NEW numbers it has (this financial year, from 45 days
+# ago - invoices typed by hand a minute ago included) and numbers the invoices from the next one. A number
+# typed by hand is kept unless Tally already has it or it is not above Tally's last number.
+def numbers_request():
+    cfg = config()
+    comp = f"<SVCURRENTCOMPANY>{_x(cfg['company'])}</SVCURRENTCOMPANY>" if cfg.get("company") else ""
+    t = date.today()
+    fy_end = date(t.year + (1 if t.month >= 4 else 0), 3, 31)
+    d1 = max(date(fy_end.year - 1, 4, 1), t - timedelta(days=45))
+    f = lambda d: d.strftime("%d-%b-%Y")  # noqa: E731
+    return f"""<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE>
+<ID>SDEWHubInvNos</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{comp}
+<SVFROMDATE TYPE="Date">{f(d1)}</SVFROMDATE><SVTODATE TYPE="Date">{f(fy_end)}</SVTODATE></STATICVARIABLES>
+<TDL><TDLMESSAGE><COLLECTION NAME="SDEWHubInvNos" ISMODIFY="No"><TYPE>Voucher</TYPE>
+<FETCH>Date, VoucherNumber, VoucherTypeName</FETCH><FILTER>SDEWHubIsInvType</FILTER></COLLECTION>
+<SYSTEM TYPE="Formulae" NAME="SDEWHubIsInvType">$VoucherTypeName = "{_x(cfg['vtype'])}"</SYSTEM>
+</TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>"""
+
+
+def _split_no(v):
+    m = re.match(r"^\s*(\d+)\s*(/\S*)?\s*$", v or "")
+    return (int(m.group(1)), m.group(2) or "") if m else (None, "")
+
+
+def tally_last(text):
+    """Tally's answer -> dict(last='16209/26-27', next='16210/26-27', numbers=set)."""
+    err = re.search(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
+    if err:
+        raise ValueError("Tally said: " + html.unescape(err.group(1)).strip())
+    if "<ENVELOPE" not in (text or "").upper():
+        raise ValueError("Tally gave no answer for the invoice numbers")
+    nos = {html.unescape(x).strip() for x in re.findall(r"<VOUCHERNUMBER[^>]*>(.*?)</VOUCHERNUMBER>", text, re.S)}
+    best, suf = 0, ""
+    for n in nos:
+        k, sf = _split_no(n)
+        if k is not None and k > best:
+            best, suf = k, sf
+    if not best:          # nothing this year in Tally's answer: fall back on the hub's copy
+        nx = next_number()
+        k, suf = _split_no(nx)
+        return dict(last="", next=nx, numbers=nos, best=(k or 1) - 1, suffix=suf)
+    return dict(last=f"{best}{suf}", next=f"{best + 1}{suf}", numbers=nos, best=best, suffix=suf)
+
+
+def assign_from_tally(ids, text):
+    """Number the invoices about to be sent from Tally's next number. -> dict(last, next, changed=[...])."""
+    t = tally_last(text)
+    best, suf, have = t["best"], t["suffix"], t["numbers"]
+    con = get_db()
+    ds = rows(f"SELECT id, inv_no, plant, dr_no, status FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))}) "
+              "AND status<>'sent'", tuple(ids))
+    keep = set()
+    for d in ds:
+        k, sf = _split_no(d["inv_no"])
+        if k is not None and k > best and d["inv_no"].strip() not in have and d["inv_no"].strip() not in keep:
+            keep.add(d["inv_no"].strip())
+    used = {_split_no(n)[0] for n in keep}
+    n, changed = best, []
+    for d in sorted(ds, key=lambda x: (x["plant"] or "", x["dr_no"] or "", x["id"])):
+        if (d["inv_no"] or "").strip() in keep:
+            continue
+        n += 1
+        while n in used:
+            n += 1
+        new = f"{n}{suf}"
+        used.add(n)
+        con.execute("UPDATE drinv_drafts SET inv_no=? WHERE id=?", (new, d["id"]))
+        changed.append(dict(id=d["id"], old=d["inv_no"] or "", new=new))
+    con.commit()
+    if changed:
+        log_event("Numbered from Tally", f"Tally's last {t['last'] or '-'}: " +
+                  ", ".join(f"{c['old'] or 'DR'} → {c['new']}" for c in changed[:20]), [c["new"] for c in changed])
+    recheck(ids)
+    return dict(last=t["last"], next=t["next"], changed=changed)
