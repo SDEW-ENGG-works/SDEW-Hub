@@ -224,7 +224,7 @@ def tally_next(req):
         t = service.tally_last(_text(req.json or {}))
     except ValueError as e:
         raise ApiError(str(e))
-    return dict(last=t["last"], next=t["next"])
+    return dict(last=t["last"], next=t["next"], source=t["source"], count=t["count"])
 
 
 @route("POST", r"/api/assign-numbers")

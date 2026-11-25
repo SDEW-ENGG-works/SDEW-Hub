@@ -250,7 +250,7 @@ async function nextFromTally() {
         const r = await apiJson('/api/drinv/tally-next', 'POST', await tallyAnswer((await api('/api/drinv/numbers-request')).xml));
         document.getElementById('start-no').value = r.next;
         document.getElementById('tally-last').textContent = r.last ? `Tally's last: ${r.last}` : '';
-        showToast(`Tally's last invoice is ${r.last || '—'}: numbers start from ${r.next}`, 'success', 6000);
+        showToast(`Last invoice ${r.last} (from ${r.source}, ${r.count} invoice numbers read from Tally): numbers start from ${r.next}`, 'success', 8000);
     } catch (e) { showToast(e.message, 'danger', 9000); }
 }
 

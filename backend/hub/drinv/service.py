@@ -183,11 +183,22 @@ def dr_invoiced(dr_nos):
     return found
 
 
+def _used_numbers(exclude_ids=()):
+    """Invoice numbers that are taken: in Tally (the hub's copy) and on other drafts of the hub."""
+    used = {r["vno"].strip() for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? AND vdate>=?",
+                                            (config()["vtype"], (date.today() - timedelta(days=400)).isoformat()))
+            if r["vno"]}
+    ex = set(exclude_ids)
+    used |= {r["inv_no"].strip() for r in rows("SELECT id, inv_no FROM drinv_drafts WHERE inv_no<>''") if r["id"] not in ex}
+    return used
+
+
 def next_number():
-    """The number after the last GST SALES NEW invoice in Tally or in the drafts: '15885/26-27'."""
+    """The number after the last GST SALES NEW invoice in Tally (the hub's copy, kept up to date by the PC hub)
+    or sent from the hub: '16297/26-27'. Drafts not yet sent do NOT count - they are numbered when sent."""
     best, suffix = 0, ""
     for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? ORDER BY vdate DESC LIMIT 400",
-                  (config()["vtype"],)) + rows("SELECT inv_no vno FROM drinv_drafts WHERE inv_no<>''"):
+                  (config()["vtype"],)) + rows("SELECT inv_no vno FROM drinv_drafts WHERE inv_no<>'' AND status='sent'"):
         m = re.match(r"^(\d+)(/.*)?$", (r["vno"] or "").strip())
         if m and int(m.group(1)) > best:
             best, suffix = int(m.group(1)), m.group(2) or ""
@@ -249,8 +260,11 @@ def check(d, cfg=None, taken=None):
     else:
         if one("SELECT vno FROM gp_tally_vouchers WHERE vno=? AND vtype LIKE '%SALES%'", (no,)):
             add("error", f"Invoice {no} already exists in Tally")
-        if taken and taken.get(no, d.get("id")) != d.get("id"):
-            add("error", f"Invoice {no} is used on another draft")
+        others = [o for o in (taken or {}).get(no, []) if o["id"] != d.get("id")]
+        if others:
+            o = others[0]
+            where = {"sent": "already sent to Tally", "verified": "verified", "draft": "a draft"}.get(o["status"], o["status"])
+            add("error", f"Invoice {no} is also on DR {o['dr_no']} ({where}) - give this one another number")
     q, dq = float(d.get("qty") or 0), float(d.get("dr_qty") or 0)
     if q <= 0:
         add("error", "Quantity is 0")
@@ -391,20 +405,14 @@ def recheck(ids=None):
     cfg = config()
     where = "WHERE status<>'sent'" + (f" AND id IN ({','.join('?' * len(ids))})" if ids else "")
     ds = rows(f"SELECT * FROM drinv_drafts {where}", tuple(ids or ()))
-    taken = {}
-    for r in rows("SELECT id, inv_no FROM drinv_drafts WHERE inv_no<>''"):
-        taken.setdefault(r["inv_no"].strip(), r["id"])
-    dups = {}
-    for r in rows("SELECT inv_no, COUNT(*) n FROM drinv_drafts WHERE inv_no<>'' GROUP BY inv_no HAVING n>1"):
-        dups[r["inv_no"]] = True
+    taken = {}                                     # invoice no -> every draft that has it
+    for r in rows("SELECT id, inv_no, dr_no, status FROM drinv_drafts WHERE inv_no<>''"):
+        taken.setdefault(r["inv_no"].strip(), []).append(r)
     done = dr_invoiced({d["dr_no"] for d in ds})
     con = get_db()
     for d in ds:
         d["_dr_done"] = done.get(d["dr_no"])
-        t = dict(taken)
-        if d["inv_no"] in dups:
-            t[d["inv_no"]] = -1
-        iss = check(d, cfg, t)
+        iss = check(d, cfg, taken)
         status = d["status"]
         if status == "verified" and any(i["level"] == "error" for i in iss):
             status = "draft"
@@ -475,16 +483,24 @@ def update(did, patch):
 
 
 def number_from(start, ids):
-    """Give the drafts (in the order given) invoice numbers start, start+1, ... ('15885/26-27')."""
+    """Give the drafts (in the order given) invoice numbers start, start+1, ... ('16297/26-27'), skipping a
+    number that Tally or another draft already has."""
     m = re.match(r"^(\d+)(/.*)?$", (start or "").strip())
     if not m:
-        raise ValueError("Start number like 15885/26-27")
+        raise ValueError("Start number like 16297/26-27")
     n, suf = int(m.group(1)), m.group(2) or ""
+    used = _used_numbers(exclude_ids=ids)
     con = get_db()
-    for i, did in enumerate(ids):
-        con.execute("UPDATE drinv_drafts SET inv_no=?, status='draft' WHERE id=? AND status<>'sent'", (f"{n + i}{suf}", did))
+    given = []
+    for did in ids:
+        while f"{n}{suf}" in used:
+            n += 1
+        con.execute("UPDATE drinv_drafts SET inv_no=?, status='draft' WHERE id=? AND status<>'sent'", (f"{n}{suf}", did))
+        used.add(f"{n}{suf}")
+        given.append(f"{n}{suf}")
+        n += 1
     con.commit()
-    log_event("Numbered", f"{len(ids)} invoice(s) from {n}{suf}")
+    log_event("Numbered", f"{len(ids)} invoice(s): {given[0] if given else ''} to {given[-1] if given else ''}", given)
     recheck()
 
 
@@ -992,29 +1008,51 @@ def _split_no(v):
 
 
 def tally_last(text):
-    """Tally's answer -> dict(last='16209/26-27', next='16210/26-27', numbers=set)."""
+    """Tally's answer -> dict(last='16296/26-27', next='16297/26-27', numbers=set, source).
+    Only GST SALES NEW vouchers count (each voucher's own type is checked, in case Tally ignored the filter) and
+    only numbers like 16296/26-27. The hub's own copy of Tally (kept up to date by the PC hub every 2 minutes)
+    is taken too: the higher of the two wins."""
     err = re.search(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
     if err:
         raise ValueError("Tally said: " + html.unescape(err.group(1)).strip())
     if "<ENVELOPE" not in (text or "").upper():
-        raise ValueError("Tally gave no answer for the invoice numbers")
-    nos = {html.unescape(x).strip() for x in re.findall(r"<VOUCHERNUMBER[^>]*>(.*?)</VOUCHERNUMBER>", text, re.S)}
-    best, suf = 0, ""
+        raise ValueError("Tally gave no answer for the invoice numbers: " + re.sub(r"\s+", " ", (text or "")[:150]))
+    vt = _norm(config()["vtype"])
+    nos = set()
+    for m in re.finditer(r"<VOUCHER\b([^>]*)>(.*?)</VOUCHER>", text, re.S):
+        v = m.group(2)
+        t = re.search(r"<VOUCHERTYPENAME[^>]*>(.*?)</VOUCHERTYPENAME>", v, re.S)
+        t = _norm(t.group(1)) if t else _norm((re.search(r'VCHTYPE="([^"]*)"', m.group(1)) or [None, ""])[1])
+        if t and t != vt:
+            continue
+        n = re.search(r"<VOUCHERNUMBER[^>]*>(.*?)</VOUCHERNUMBER>", v, re.S)
+        if n:
+            nos.add(html.unescape(n.group(1)).strip())
+    sufs = {}
     for n in nos:
         k, sf = _split_no(n)
-        if k is not None and k > best:
-            best, suf = k, sf
-    if not best:          # nothing this year in Tally's answer: fall back on the hub's copy
-        nx = next_number()
-        k, suf = _split_no(nx)
-        return dict(last="", next=nx, numbers=nos, best=(k or 1) - 1, suffix=suf)
-    return dict(last=f"{best}{suf}", next=f"{best + 1}{suf}", numbers=nos, best=best, suffix=suf)
+        if k is not None and sf:
+            sufs[sf] = sufs.get(sf, 0) + 1
+    main = max(sufs, key=sufs.get) if sufs else ""
+    best, src = 0, "Tally"
+    for n in nos:
+        k, sf = _split_no(n)
+        if k is not None and sf == main and k > best:
+            best = k
+    hub = next_number()                     # the hub's copy of Tally + invoices sent from the hub
+    hk, hs = _split_no(hub)
+    if hk and (not main or hs == main) and hk - 1 > best:
+        best, src, main = hk - 1, "the hub's copy of Tally", main or hs
+    if not best:
+        raise ValueError("No GST SALES NEW invoice found in Tally's answer or in the hub")
+    return dict(last=f"{best}{main}", next=f"{best + 1}{main}", numbers=nos, best=best, suffix=main, source=src,
+                count=len(nos))
 
 
 def assign_from_tally(ids, text):
     """Number the invoices about to be sent from Tally's next number. -> dict(last, next, changed=[...])."""
     t = tally_last(text)
-    best, suf, have = t["best"], t["suffix"], t["numbers"]
+    best, suf, have = t["best"], t["suffix"], set(t["numbers"]) | _used_numbers(exclude_ids=ids)
     con = get_db()
     ds = rows(f"SELECT id, inv_no, plant, dr_no, status FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))}) "
               "AND status<>'sent'", tuple(ids))
@@ -1023,7 +1061,7 @@ def assign_from_tally(ids, text):
         k, sf = _split_no(d["inv_no"])
         if k is not None and k > best and d["inv_no"].strip() not in have and d["inv_no"].strip() not in keep:
             keep.add(d["inv_no"].strip())
-    used = {_split_no(n)[0] for n in keep}
+    used = {_split_no(n)[0] for n in keep} | {_split_no(n)[0] for n in have if _split_no(n)[1] == suf}
     n, changed = best, []
     for d in sorted(ds, key=lambda x: (x["plant"] or "", x["dr_no"] or "", x["id"])):
         if (d["inv_no"] or "").strip() in keep:
