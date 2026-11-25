@@ -53,41 +53,44 @@ function render() {
         document.getElementById('di-foot').textContent = '';
         return;
     }
-    const ed = (d, k, v, cls = '', w = '') => d.status === 'sent' ? esc(v ?? '')
+    const ed = (d, k, v, cls = '', w = '') => d.status === 'sent' ? `<span class="ro ${cls}">${esc(v ?? '')}</span>`
         : `<input class="ed ${cls}" ${w} value="${esc(v ?? '')}" onchange="edit(${d.id}, '${k}', this.value)">`;
-    t.innerHTML = `<thead><tr><th><input type="checkbox" ${allOn ? 'checked' : ''} onchange="tickAll(this.checked)"></th>
-        <th>Invoice no</th><th>Date</th><th>Plant / DR / PO</th><th>Part · Tally item</th>
-        <th title="TOTAL NOS in Tally">Total Nos</th><th title="NO OF PACKAGES in Tally">No of Packages</th>
-        <th title="NO OF PICES in Tally">No of Pieces</th><th>Title</th>
-        <th>Rate</th><th>GST</th><th>Taxable</th><th>Total</th><th>Remarks</th><th>Status</th></tr></thead><tbody>` +
+    const box = (d, k, v, label, hint) => `<label class="mini"><span>${label}</span>${ed(d, k, v, 'num' + (v ? '' : ' miss'),
+        `placeholder="enter"${hint ? ` title="${esc(hint)}"` : ''}`)}</label>`;
+    // one compact line per invoice (fits the page width, no sideways scrolling); the points to check go in a
+    // thin line under it
+    t.innerHTML = `<colgroup><col style="width:2.5%"><col style="width:10.5%"><col style="width:8.5%"><col style="width:16%">
+        <col style="width:14%"><col style="width:5%"><col style="width:5.5%"><col style="width:10%"><col style="width:7.5%">
+        <col style="width:15%"><col style="width:5.5%"></colgroup>
+        <thead><tr><th><input type="checkbox" ${allOn ? 'checked' : ''} onchange="tickAll(this.checked)"></th>
+        <th>Invoice no · date</th><th>Plant · DR · PO</th><th>Part · Tally item</th>
+        <th title="TOTAL NOS / NO OF PACKAGES / NO OF PICES in Tally">Total nos · Packages · Pieces</th><th>Title</th>
+        <th class="num">Rate</th><th>GST</th><th class="num">Taxable · Total</th><th>Remarks</th><th>Status</th></tr></thead><tbody>` +
         ds.map(d => {
             const errs = d.issues.filter(i => i.level === 'error');
-            return `<tr class="${d.status}">
+            const notes = d.status === 'sent' ? [] : d.issues;
+            const sub = notes.length || (d.tally_msg && d.status !== 'sent');
+            const st = d.status === 'sent' ? 'In Tally' : d.status === 'verified' ? 'Verified' : (errs.length ? 'Draft' : 'Ready');
+            return `<tr class="${d.status} main${sub ? ' has-sub' : ''}">
             <td><input type="checkbox" ${DI.ticked.has(d.id) ? 'checked' : ''} onchange="tick(${d.id}, this.checked)"></td>
-            <td style="min-width:110px">${ed(d, 'inv_no', d.inv_no, d.inv_no ? '' : 'miss', 'placeholder="15885/26-27"')}</td>
-            <td>${d.status === 'sent' ? dmy(d.inv_date) : `<input class="ed" type="date" value="${esc(d.inv_date)}" onchange="edit(${d.id}, 'inv_date', this.value)">`}</td>
-            <td><b>${esc(d.plant || '?')}</b><div class="di-small">DR ${esc(d.dr_no)}</div><div class="di-small">PO ${esc(d.po_no)}</div></td>
-            <td style="min-width:200px"><b>${esc(d.part)}</b> <span class="di-small">${esc(d.descr || '')}</span>
-                ${ed(d, 'item_name', d.item_name, d.item_name ? '' : 'miss', 'placeholder="Tally stock item name"')}
-                <div class="di-small">DR: ${num(d.dr_req)} ${esc(d.bin || '')} × ${num(d.dr_size)} = ${num(d.dr_qty)}</div></td>
-            <td style="width:70px">${ed(d, 'qty', num(d.qty), 'num' + (d.qty ? '' : ' miss'))}</td>
-            <td style="width:80px">${ed(d, 'packages', num(d.packages), 'num' + (d.packages ? '' : ' miss'), 'placeholder="enter"')}
-                <div class="di-small">DR: ${num(d.dr_req)} ${esc(d.bin || '')}</div></td>
-            <td style="width:80px">${ed(d, 'pieces', num(d.pieces), 'num' + (d.pieces ? '' : ' miss'), 'placeholder="enter"')}
-                <div class="di-small">DR: ${num(d.dr_size)} each</div></td>
-            <td style="width:80px">${ed(d, 'title', d.title ?? 'KANBAN')}</td>
-            <td style="width:84px">${ed(d, 'rate', d.rate == null ? '' : (+d.rate).toFixed(2), 'num' + (d.rate ? '' : ' miss'))}
+            <td>${ed(d, 'inv_no', d.inv_no, '', 'placeholder="auto from Tally"')}
+                ${d.status === 'sent' ? `<div class="di-small">${dmy(d.inv_date)}</div>` : `<input class="ed small" type="date" value="${esc(d.inv_date)}" onchange="edit(${d.id}, 'inv_date', this.value)">`}</td>
+            <td><b>${esc(d.plant || '?')}</b> <span class="di-small">DR ${esc(d.dr_no)}</span><div class="di-small">PO ${esc(d.po_no)}</div></td>
+            <td class="clip"><b>${esc(d.part)}</b> <span class="di-small" title="${esc(d.descr || '')}">${esc(d.descr || '')}</span>
+                ${ed(d, 'item_name', d.item_name, 'small' + (d.item_name ? '' : ' miss'), `placeholder="Tally stock item" title="${esc(d.item_name || '')}"`)}</td>
+            <td><div class="trio">${box(d, 'qty', num(d.qty), 'Total', `DR qty ${num(d.dr_qty)}`)}${box(d, 'packages', num(d.packages), 'Pkgs', `DR: ${num(d.dr_req)} ${d.bin || ''}`)}${box(d, 'pieces', num(d.pieces), 'Pcs', `DR: ${num(d.dr_size)} each`)}</div>
+                <div class="di-small">DR ${num(d.dr_req)} ${esc(d.bin || '')} × ${num(d.dr_size)} = ${num(d.dr_qty)}</div></td>
+            <td>${ed(d, 'title', d.title ?? 'KANBAN', 'small')}</td>
+            <td class="num">${ed(d, 'rate', d.rate == null ? '' : (+d.rate).toFixed(2), 'num' + (d.rate ? '' : ' miss'))}
                 ${d.rate_po != null && d.rate != null && Math.abs(d.rate - d.rate_po) >= .005 ? `<div class="di-small">PO ${n2(d.rate_po)}</div>` : ''}</td>
-            <td style="min-width:150px">${gstCell(d)}</td>
-            <td class="num">${n2(d.amount)}</td>
-            <td class="num"><b>${n2(d.total)}</b>${d.round_off ? `<div class="di-small">Round off ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
-            <td class="rem">${ed(d, 'remarks', d.remarks)}</td>
-            <td><span class="di-b ${d.status}">${d.status === 'sent' ? 'In Tally' : d.status === 'verified' ? 'Verified' : 'Draft'}</span>
-                ${d.verified_by && d.status !== 'draft' ? `<div class="di-small">by ${esc(d.verified_by)}</div>` : ''}
-                ${d.tally_msg ? `<div class="di-small" style="color:${d.status === 'sent' ? '#166534' : '#b91c1c'}">${esc(d.tally_msg)}</div>` : ''}
-                ${d.status !== 'sent' && d.issues.length ? `<ul class="di-iss">${d.issues.map(i => `<li class="${i.level}">${esc(i.text)}</li>`).join('')}</ul>` : ''}
-                ${d.status !== 'sent' && !errs.length && d.status === 'draft' ? '<div class="di-small" style="color:#166534">Ready to verify</div>' : ''}</td>
-            </tr>`;
+            <td>${gstCell(d)}</td>
+            <td class="num">${n2(d.amount)}<div><b>${n2(d.total)}</b></div>${d.round_off ? `<div class="di-small">R/O ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
+            <td>${d.status === 'sent' ? `<span class="di-small">${esc(d.remarks || '')}</span>`
+                : `<textarea class="ed small" rows="2" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`}</td>
+            <td><span class="di-b ${d.status}${st === 'Ready' ? ' ready' : ''}">${st}</span>
+                ${d.verified_by && d.status !== 'draft' ? `<div class="di-small">${esc(d.verified_by)}</div>` : ''}</td>
+            </tr>` + (sub ? `<tr class="${d.status} sub"><td></td><td colspan="10"><div class="di-iss">${notes.map(i => `<span class="${i.level}">${esc(i.text)}</span>`).join('')}
+                ${d.tally_msg && d.status !== 'sent' ? `<span class="error">Tally: ${esc(d.tally_msg)}</span>` : ''}</div></td></tr>` : '');
         }).join('') + '</tbody>';
     const sum = ds.reduce((a, d) => a + (d.total || 0), 0);
     document.getElementById('di-foot').textContent = `${ds.length} invoice(s), total ₹${inr(sum)}. Ticked: ${DI.ticked.size}.`;
@@ -96,8 +99,8 @@ function render() {
 // GST shown the way the invoice prints it: CGST 2.5 % + SGST 2.5 % (MDU, Tamil Nadu) or IGST 5 % (DBR)
 function gstCell(d) {
     const g = +d.gst_rate || 0;
-    const rate = d.status === 'sent' ? `${num(g)} %` :
-        `<input class="ed num" style="width:46px;display:inline-block" value="${num(g)}" onchange="edit(${d.id}, 'gst_rate', this.value)"> %`;
+    const rate = d.status === 'sent' ? `${num(g)}%` :
+        `<input class="ed num tiny" value="${num(g)}" onchange="edit(${d.id}, 'gst_rate', this.value)">%`;
     const lines = d.igst
         ? `<div>IGST ${num(g)}% <b>₹${n2(d.igst)}</b></div>`
         : `<div>CGST ${num(g / 2)}% <b>₹${n2(d.cgst)}</b></div><div>SGST ${num(g / 2)}% <b>₹${n2(d.sgst)}</b></div>`;
