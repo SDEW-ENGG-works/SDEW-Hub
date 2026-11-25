@@ -184,12 +184,14 @@ def dr_invoiced(dr_nos):
 
 
 def _used_numbers(exclude_ids=()):
-    """Invoice numbers that are taken: in Tally (the hub's copy) and on other drafts of the hub."""
+    """Invoice numbers that are taken: in Tally (the hub's copy) and invoices already sent from the hub. Numbers on
+    drafts not sent yet do not count - drafts are numbered from Tally's last number."""
     used = {r["vno"].strip() for r in rows("SELECT vno FROM gp_tally_vouchers WHERE vtype=? AND vdate>=?",
                                             (config()["vtype"], (date.today() - timedelta(days=400)).isoformat()))
             if r["vno"]}
     ex = set(exclude_ids)
-    used |= {r["inv_no"].strip() for r in rows("SELECT id, inv_no FROM drinv_drafts WHERE inv_no<>''") if r["id"] not in ex}
+    used |= {r["inv_no"].strip() for r in rows("SELECT id, inv_no FROM drinv_drafts WHERE inv_no<>'' AND status='sent'")
+             if r["id"] not in ex}
     return used
 
 
@@ -260,7 +262,7 @@ def check(d, cfg=None, taken=None):
     else:
         if one("SELECT vno FROM gp_tally_vouchers WHERE vno=? AND vtype LIKE '%SALES%'", (no,)):
             add("error", f"Invoice {no} already exists in Tally")
-        others = [o for o in (taken or {}).get(no, []) if o["id"] != d.get("id")]
+        others = [o for o in (taken or {}).get(no, []) if o["id"] != d.get("id") and o["status"] == "sent"]
         if others:
             o = others[0]
             where = {"sent": "already sent to Tally", "verified": "verified", "draft": "a draft"}.get(o["status"], o["status"])
@@ -499,6 +501,7 @@ def number_from(start, ids):
         used.add(f"{n}{suf}")
         given.append(f"{n}{suf}")
         n += 1
+    _clear_others(con, given, ids)
     con.commit()
     log_event("Numbered", f"{len(ids)} invoice(s): {given[0] if given else ''} to {given[-1] if given else ''}", given)
     recheck()
@@ -1049,33 +1052,42 @@ def tally_last(text):
                 count=len(nos))
 
 
+def _clear_others(con, numbers, ids):
+    """Other drafts (not sent) holding one of these numbers lose it: they are numbered again from Tally later."""
+    numbers = [n for n in numbers if n]
+    if not numbers:
+        return
+    ex = set(int(i) for i in ids)
+    for r in rows(f"SELECT id FROM drinv_drafts WHERE status<>'sent' AND inv_no IN ({','.join('?' * len(numbers))})",
+                  tuple(numbers)):
+        if r["id"] not in ex:
+            con.execute("UPDATE drinv_drafts SET inv_no='' WHERE id=?", (r["id"],))
+
+
 def assign_from_tally(ids, text):
-    """Number the invoices about to be sent from Tally's next number. -> dict(last, next, changed=[...])."""
+    """Number the invoices about to be sent from Tally's last number + 1, + 2, ... (in plant / DR order),
+    skipping only a number Tally or an invoice already sent has. -> dict(last, next, changed=[...])."""
     t = tally_last(text)
-    best, suf, have = t["best"], t["suffix"], set(t["numbers"]) | _used_numbers(exclude_ids=ids)
+    best, suf = t["best"], t["suffix"]
+    have = set(t["numbers"]) | _used_numbers(exclude_ids=ids)
+    used = {_split_no(x)[0] for x in have if _split_no(x)[1] == suf}
     con = get_db()
     ds = rows(f"SELECT id, inv_no, plant, dr_no, status FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))}) "
               "AND status<>'sent'", tuple(ids))
-    keep = set()
-    for d in ds:
-        k, sf = _split_no(d["inv_no"])
-        if k is not None and k > best and d["inv_no"].strip() not in have and d["inv_no"].strip() not in keep:
-            keep.add(d["inv_no"].strip())
-    used = {_split_no(n)[0] for n in keep} | {_split_no(n)[0] for n in have if _split_no(n)[1] == suf}
-    n, changed = best, []
+    n, changed, given = best, [], []
     for d in sorted(ds, key=lambda x: (x["plant"] or "", x["dr_no"] or "", x["id"])):
-        if (d["inv_no"] or "").strip() in keep:
-            continue
         n += 1
         while n in used:
             n += 1
         new = f"{n}{suf}"
         used.add(n)
-        con.execute("UPDATE drinv_drafts SET inv_no=? WHERE id=?", (new, d["id"]))
-        changed.append(dict(id=d["id"], old=d["inv_no"] or "", new=new))
+        given.append(new)
+        if (d["inv_no"] or "").strip() != new:
+            con.execute("UPDATE drinv_drafts SET inv_no=? WHERE id=?", (new, d["id"]))
+            changed.append(dict(id=d["id"], old=d["inv_no"] or "", new=new))
+    _clear_others(con, given, ids)
     con.commit()
-    if changed:
-        log_event("Numbered from Tally", f"Tally's last {t['last'] or '-'}: " +
-                  ", ".join(f"{c['old'] or 'DR'} → {c['new']}" for c in changed[:20]), [c["new"] for c in changed])
-    recheck(ids)
+    log_event("Numbered from Tally", f"Tally's last {t['last'] or '-'}: {given[0] if given else ''} to "
+                                     f"{given[-1] if given else ''}", given)
+    recheck()
     return dict(last=t["last"], next=t["next"], changed=changed)

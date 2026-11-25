@@ -300,7 +300,7 @@ async function sendToTally() {
     const ids = sel.length ? sel : DI.data.drafts.filter(d => d.status === 'verified').map(d => d.id);
     if (!ids.length) return showToast('No verified invoices to send', 'danger');
     if (!await confirmBox('Send to Tally?', `${ids.length} verified invoice(s) will be created in Tally as ${DI.data.config.vtype}, numbered from Tally's last invoice number + 1 ` +
-        '(a number you typed is kept if it is still free). ' +
+        '(in plant / DR order). ' +
         'Then generate the IRN (e-invoice) for them in Tally.')) return;
     const btn = document.getElementById('btn-send');
     btn.disabled = true;
