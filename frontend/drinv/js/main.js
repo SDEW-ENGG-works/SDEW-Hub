@@ -25,11 +25,9 @@ function renderConfig(c) {
     document.getElementById('t-company').textContent = c.company ? `, company ${c.company}` : '';
     document.getElementById('t-parties').innerHTML = Object.entries(c.plants).map(([p, v]) =>
         `<b>${esc(p)}</b> ${esc(v.party)} (${v.inter ? 'IGST' : 'CGST + SGST'})`).join(' · ');
-    const L = c.learned || {};
-    document.getElementById('t-learned').innerHTML = Object.keys(c.plants).map(p => L[p]
-        ? `<li>✅ <b>${esc(p)}</b>: format learned from invoice ${esc(L[p].from_inv)} — fields ${esc(L[p].fields.join(', ') || 'none')}</li>`
-        : `<li>⚠️ <b>${esc(p)}</b>: format not learned yet (done automatically before the first send)</li>`).join('') +
-        (c.last_learn ? `<li class="di-small">Last try: ${esc(c.last_learn)}</li>` : '');
+    document.getElementById('t-learned').innerHTML =
+        `<li>✅ Invoice format taken from SDEW's own Tally invoices (read 25 Nov): Title, NO OF PICES, NO OF PACKAGES, TOTAL NOS, ` +
+        'Party Name (TAFE/MDU, TAFE/DBR), PO NUMBER, TAFE Key ID, buyer / consignee address, Round Off, order date 1-Jul-17.</li>';
 }
 
 function shown() {
@@ -60,7 +58,7 @@ function render() {
     t.innerHTML = `<thead><tr><th><input type="checkbox" ${allOn ? 'checked' : ''} onchange="tickAll(this.checked)"></th>
         <th>Invoice no</th><th>Date</th><th>Plant / DR / PO</th><th>Part · Tally item</th>
         <th title="TOTAL NOS in Tally">Total Nos</th><th title="NO OF PACKAGES in Tally">No of Packages</th>
-        <th title="NO OF PICES in Tally">No of Pieces</th><th title="TOTAL KGS in Tally">Total Kgs</th><th>Title</th>
+        <th title="NO OF PICES in Tally">No of Pieces</th><th>Title</th>
         <th>Rate</th><th>GST</th><th>Taxable</th><th>Total</th><th>Remarks</th><th>Status</th></tr></thead><tbody>` +
         ds.map(d => {
             const errs = d.issues.filter(i => i.level === 'error');
@@ -77,7 +75,6 @@ function render() {
                 <div class="di-small">DR: ${num(d.dr_req)} ${esc(d.bin || '')}</div></td>
             <td style="width:80px">${ed(d, 'pieces', num(d.pieces), 'num' + (d.pieces ? '' : ' miss'), 'placeholder="enter"')}
                 <div class="di-small">DR: ${num(d.dr_size)} each</div></td>
-            <td style="width:64px">${ed(d, 'kgs', d.kgs, 'num', 'placeholder="—"')}</td>
             <td style="width:80px">${ed(d, 'title', d.title ?? 'KANBAN')}</td>
             <td style="width:84px">${ed(d, 'rate', d.rate == null ? '' : (+d.rate).toFixed(2), 'num' + (d.rate ? '' : ' miss'))}
                 ${d.rate_po != null && d.rate != null && Math.abs(d.rate - d.rate_po) >= .005 ? `<div class="di-small">PO ${n2(d.rate_po)}</div>` : ''}</td>

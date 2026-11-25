@@ -18,11 +18,13 @@ DEFAULT = dict(
         MDU=dict(party="Tractors and Farm Equpment Ltd", inter=False,
                  sales={"5": "GST SALES @ 5%", "18": "GST Sales 18%"},
                  address=["No : 10/205, Kalladipatti P.O,", "Dindugal ( Dist )", "Madurai - 624201"],
-                 state="Tamil Nadu", pincode="624201", gstin="33AAACT2761Q1Z1"),
+                 state="Tamil Nadu", pincode="624201", gstin="33AAACT2761Q1Z1", place="MADURAI.",
+                 cst="3414", tin="33111500330", durgaparty="TAFE/MDU"),
         DBR=dict(party="Tractors and Farm Equipment Ltd - B", inter=True,
                  sales={"5": "GST SALES INTERSTATE @ 5%", "18": "GST SALES INTERSTATE @ 18%"},
                  address=["Plot No : 1, Kiadb Industrial Area,", "Doddabalapur,", "Bangalore  - 561203"],
-                 state="Karnataka", pincode="561203", gstin="29AAACT2761Q1ZQ"),
+                 state="Karnataka", pincode="561203", gstin="29AAACT2761Q1ZQ", place="BANGALORE.",
+                 cst="00750293", tin="29650081474", durgaparty="TAFE/DBR"),
     ),
     templates={},       # per plant: what a real invoice in Tally carries (UDF fields, party details) - learn()
 )
@@ -32,6 +34,26 @@ EWAY_LIMIT = 50000
 EDITABLE = ("inv_no", "inv_date", "qty", "pieces", "packages", "kgs", "rate", "remarks", "item_name", "gst_rate",
             "title")
 DEFAULT_TITLE = "KANBAN"
+VENDOR_CODE = "DS1615"           # SDEW's TAFE vendor code (TAFE Key ID: DS1615$PO$invoice$date)
+
+# How SDEW's Tally keeps a TAFE invoice - read from real invoices 15621, 15622, 15554, 15495 (MDU),
+# 15611, 15624, 15594 (DBR) with "Read Tally structure" on 25 Nov 2026.
+# The TDL fields on the invoice (name in Tally, its number, what goes in):
+VOUCHER_UDF = [   # (tag, DESC, INDEX, role)
+    ("UDF:DURGAPARTY", "DurgaParty", 2986, "durgaparty"),     # Party Name: TAFE/MDU, TAFE/DBR
+    ("UDF:DURGATITLE", "durgatitle", 8772, "title"),          # Title: KANBAN
+    ("UDF:NOOFPICESDURGA", "noofpicesdurga", 8773, "pieces"),  # NO OF PICES
+    ("UDF:NOOFPACKSDURGA", "noofpacksdurga", 8774, "packages"),  # NO OF PACKAGES
+    ("UDF:TOTALNOSDURGA", "totalnosdurga", 8775, "qty"),       # TOTAL NOS
+    ("UDF:APPUNIQUEID", "AppUniqueID", 25452, "appid"),        # TAFE Key ID
+    ("UDF:TAFPONO", "TAFPONO", 25462, "po"),                   # PO NUMBER
+]
+ITEM_UDF = [
+    ("UDF:NOOFRATE", "noofRate", 2984, "rate"),
+    ("UDF:TAFEPARTNONEW", "TAFEPARTNONew", 25460, "part"),
+]
+# Order date on the invoice (Order Details): what the office types, not the PO's own date
+PO_ORDER_DATE = {"1030000676": "20170701", "1210000691": "20170701"}
 
 
 def log_event(action, detail, invoices=None):
@@ -361,7 +383,8 @@ def public_config():
                 learned={p: dict(from_inv=v.get("from_inv"), at=v.get("at"), fields=[f["desc"] for f in v.get("udf", [])],
                                  address=bool(v.get("has_address")))
                          for p, v in t.items()},
-                last_learn=c.get("last_learn") or "")
+                last_learn=c.get("last_learn") or "",
+                builtin=[ds for _, ds, _, _ in VOUCHER_UDF + ITEM_UDF])
 
 
 def update(did, patch):
@@ -585,85 +608,98 @@ def learn_request():
     return [daybook_request(cfg["company"], date.fromisoformat(d), date.fromisoformat(d)) for d in days[:6]]
 
 
-def _party_xml(pl, tp):
-    """Buyer and consignee: as learned from a real invoice, else from the plant's details in the hub."""
-    tags = dict((tp or {}).get("tags") or {})
-    have_addr = (tp or {}).get("has_address")
-    out = list(tags.values())
-    name = pl["party"]
-    base = {"PARTYNAME": name, "PARTYMAILINGNAME": name, "CONSIGNEEMAILINGNAME": name,
-            "STATENAME": pl.get("state"), "COUNTRYOFRESIDENCE": "India", "PLACEOFSUPPLY": pl.get("state"),
-            "PARTYPINCODE": pl.get("pincode"), "PARTYGSTIN": pl.get("gstin"), "GSTREGISTRATIONTYPE": "Regular",
-            "CONSIGNEEGSTIN": pl.get("gstin"), "CONSIGNEEPINCODE": pl.get("pincode"),
-            "CONSIGNEESTATENAME": pl.get("state"), "CONSIGNEECOUNTRYNAME": "India", "BASICBASEPARTYNAME": name}
-    for t, v in base.items():
-        if v and t not in tags:
-            out.append(f"<{t}>{_x(v)}</{t}>")
-    if not have_addr and pl.get("address"):
-        lines = "".join(f"<ADDRESS>{_x(a)}</ADDRESS>" for a in pl["address"])
-        out.append(f'<ADDRESS.LIST TYPE="String">{lines}</ADDRESS.LIST>')
-        out.append(f'<BASICBUYERADDRESS.LIST TYPE="String">{lines}</BASICBUYERADDRESS.LIST>')
+def _party_xml(pl, tp=None):
+    """Buyer and consignee exactly as Tally fills them from the party ledger (copied from real invoices)."""
+    name, state, pin, gstin = pl["party"], pl.get("state"), pl.get("pincode"), pl.get("gstin")
+    vals = [("GSTREGISTRATIONTYPE", "Regular"), ("VATDEALERTYPE", "Regular"), ("STATENAME", state),
+            ("COUNTRYOFRESIDENCE", "India"), ("PARTYGSTIN", gstin), ("PLACEOFSUPPLY", state), ("PARTYNAME", name),
+            ("PARTYMAILINGNAME", name), ("PARTYPINCODE", pin), ("BILLTOPLACE", pl.get("place")),
+            ("SHIPTOPLACE", pl.get("place")), ("CONSIGNEEGSTIN", gstin), ("CONSIGNEEMAILINGNAME", name),
+            ("CONSIGNEEPINCODE", pin), ("CONSIGNEESTATENAME", state), ("CONSIGNEECOUNTRYNAME", "India"),
+            ("BASICBASEPARTYNAME", name), ("CONSIGNEECSTNUMBER", pl.get("cst")), ("BUYERSCSTNUMBER", pl.get("cst")),
+            ("TRADERCONSVATTINNO", pl.get("tin")), ("BASICBUYERSSALESTAXNO", pl.get("tin"))]
+    out = [f"<{t}>{_x(v)}</{t}>" for t, v in vals if v]
+    if pl.get("address"):
+        out.append('<ADDRESS.LIST TYPE="String">' + "".join(f"<ADDRESS>{_x(a)}</ADDRESS>" for a in pl["address"])
+                   + "</ADDRESS.LIST>")
+        out.append('<BASICBUYERADDRESS.LIST TYPE="String">' +
+                   "".join(f"<BASICBUYERADDRESS>{_x(a)}</BASICBUYERADDRESS>" for a in pl["address"]) +
+                   "</BASICBUYERADDRESS.LIST>")
     return "\n".join(out)
 
 
 def _ledger(name, amount, party=False):
-    """One ledger line. Tally: debit = negative amount + deemed positive Yes. ISLASTDEEMEDPOSITIVE must say the
-    same - without it Tally's invoice screen took the Round Off debit as a credit (+0.44 instead of -0.44)."""
+    """Party / tax line. Tally: debit = negative amount + deemed positive Yes."""
     dp = "Yes" if amount < 0 else "No"
-    extra = "<ISPARTYLEDGER>Yes</ISPARTYLEDGER>" if party else ""
-    return (f"<LEDGERENTRIES.LIST><LEDGERNAME>{_x(name)}</LEDGERNAME><ISDEEMEDPOSITIVE>{dp}</ISDEEMEDPOSITIVE>"
+    extra = "<ISPARTYLEDGER>Yes</ISPARTYLEDGER>" if party else "<ISPARTYLEDGER>No</ISPARTYLEDGER>"
+    rt = "" if party else "<ROUNDTYPE>Normal Rounding</ROUNDTYPE>"
+    return (f"<LEDGERENTRIES.LIST>{rt}<LEDGERNAME>{_x(name)}</LEDGERNAME><ISDEEMEDPOSITIVE>{dp}</ISDEEMEDPOSITIVE>"
             f"{extra}<ISLASTDEEMEDPOSITIVE>{dp}</ISLASTDEEMEDPOSITIVE><AMOUNT>{amount:.2f}</AMOUNT>")
+
+
+def _round_off(name, ro):
+    """Round Off exactly like the office's invoices: always deemed positive No, the amount with its sign
+    (-0.06 when the bill is rounded down, 0.42 when rounded up), Normal Rounding to 1 rupee. Sending it as a
+    debit (Yes / -0.44) made Tally's invoice show +0.44 and a total 0.88 too high."""
+    return (f"<LEDGERENTRIES.LIST><ROUNDTYPE>Normal Rounding</ROUNDTYPE><LEDGERNAME>{_x(name)}</LEDGERNAME>"
+            f"<ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>No</ISPARTYLEDGER>"
+            f"<ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE><ROUNDLIMIT> 1</ROUNDLIMIT>"
+            f"<AMOUNT>{ro:.2f}</AMOUNT><VATEXPAMOUNT>{ro:.2f}</VATEXPAMOUNT></LEDGERENTRIES.LIST>\n")
+
+
+def _udf(tag, desc, index, val):
+    return (f'<{tag}.LIST DESC="`{desc}`" ISLIST="YES" TYPE="String" INDEX="{index}">'
+            f'<{tag} DESC="`{desc}`">{_x(val)}</{tag}></{tag}.LIST>\n')
+
+
+def tafe_key(po_no, inv_no, inv_date):
+    """TAFE Key ID as the office's TDL writes it: "DS1615$1030000676$156212627$14112026"."""
+    y, m, dd = inv_date.split("-")
+    return f'"{VENDOR_CODE}${po_no}${re.sub(r"[^0-9]", "", inv_no or "")}${dd}{m}{y}"'
 
 
 def voucher_xml(d, cfg=None):
     cfg = cfg or config()
     pl = cfg["plants"][d["plant"]]
-    tp = (cfg.get("templates") or {}).get(d["plant"]) or {}
-    unit = tp.get("unit") or cfg["unit"]
-    godown = tp.get("godown") or cfg.get("godown") or ""
+    unit = cfg["unit"]
+    godown = cfg.get("godown") or ""
     sales = pl["sales"].get(_num(d["gst_rate"])) or pl["sales"].get(str(int(d["gst_rate"])))
     if not sales:
         raise ValueError(f"No sales ledger for GST {d['gst_rate']}% ({d['plant']})")
     amt, total = d["amount"], d["total"]
     qty = f" {_num(d['qty'])} {unit}"
     vals = dict(po=d["po_no"], pieces=_num(d["pieces"]), packages=_num(d["packages"]), qty=_num(d["qty"]),
-                kgs=d.get("kgs") or "", title=d.get("title") if d.get("title") is not None else DEFAULT_TITLE)
-    udf = ""
-    for u in tp.get("udf", []):
-        val = vals.get(u["role"]) if u["role"] != "fixed" else u.get("sample", "")
-        if val in (None, ""):
-            continue
-        udf += f"<{u['tag']}.LIST{u['list_attrs']}><{u['tag']}{u['attrs']}>{_x(val)}</{u['tag']}></{u['tag']}.LIST>\n"
-    order = ""
-    if tp.get("order_list", True):
-        od = tp.get("order_date") if tp.get("order_po") == d["po_no"] else ""
-        if not od:
-            h = one("SELECT po_date FROM po_headers WHERE po_no=?", (d["po_no"],))
-            mm = re.match(r"(\d\d)\.(\d\d)\.(\d{4})", (h or {}).get("po_date") or "")
-            od = f"{mm.group(3)}{mm.group(2)}{mm.group(1)}" if mm else ""
-        order = (f"<INVOICEORDERLIST.LIST>{f'<BASICORDERDATE>{od}</BASICORDERDATE>' if od else ''}"
-                 f"<BASICPURCHASEORDERNO>{_x(d['po_no'])}</BASICPURCHASEORDERNO></INVOICEORDERLIST.LIST>")
-    # No <ORDERNO> on the item line: that links the item to a Tally SALES ORDER of that name. SDEW does not use
-    # sales orders, so Tally then took PO 1030000676 as an order with a pending elbow at 610.83 and offered that
-    # line (and its rate) on every new MDU invoice typed by hand. The PO stays in the invoice's Order No
-    # (INVOICEORDERLIST) and the PO NUMBER field, as on the office's own invoices.
+                title=d.get("title") or DEFAULT_TITLE, durgaparty=pl.get("durgaparty") or "",
+                appid=tafe_key(d["po_no"], d["inv_no"], d["inv_date"]),
+                rate=f"{d['rate']:.2f}", part=d["part"])
+    udf = "".join(_udf(t, ds, ix, vals[r]) for t, ds, ix, r in VOUCHER_UDF if vals.get(r) not in (None, ""))
+    item_udf = "".join(_udf(t, ds, ix, vals[r]) for t, ds, ix, r in ITEM_UDF if vals.get(r) not in (None, ""))
+    od = PO_ORDER_DATE.get(d["po_no"]) or ""
+    if not od:
+        h = one("SELECT po_date FROM po_headers WHERE po_no=?", (d["po_no"],))
+        mm = re.match(r"(\d\d)\.(\d\d)\.(\d{4})", (h or {}).get("po_date") or "")
+        od = f"{mm.group(3)}{mm.group(2)}{mm.group(1)}" if mm else ""
+    order = (f"<INVOICEORDERLIST.LIST>{f'<BASICORDERDATE>{od}</BASICORDERDATE>' if od else ''}"
+             f"<BASICPURCHASEORDERNO>{_x(d['po_no'])}</BASICPURCHASEORDERNO></INVOICEORDERLIST.LIST>")
+    # no <ORDERNO> on the item line: that links the item to a Tally SALES ORDER (see the 610.83 elbow, Nov 2026)
     batch = (f"<BATCHALLOCATIONS.LIST>{f'<GODOWNNAME>{_x(godown)}</GODOWNNAME>' if godown else ''}"
-             f"<BATCHNAME>Primary Batch</BATCHNAME><AMOUNT>{amt:.2f}</AMOUNT>"
-             f"<ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY></BATCHALLOCATIONS.LIST>")
+             f"<BATCHNAME>Primary Batch</BATCHNAME>"
+             f"{f'<DESTINATIONGODOWNNAME>{_x(godown)}</DESTINATIONGODOWNNAME>' if godown else ''}"
+             f"<AMOUNT>{amt:.2f}</AMOUNT><ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY>"
+             f"<BATCHRATE>{d['rate']:.2f}/{unit}</BATCHRATE></BATCHALLOCATIONS.LIST>")
     taxes = ""
     for led, v in ((cfg["cgst"], d["cgst"]), (cfg["sgst"], d["sgst"]), (cfg["igst"], d["igst"])):
         if v:
-            taxes += _ledger(led, v) + "</LEDGERENTRIES.LIST>\n"
+            taxes += _ledger(led, v) + f"<VATEXPAMOUNT>{v:.2f}</VATEXPAMOUNT></LEDGERENTRIES.LIST>\n"
     ro = d["round_off"] or 0
     if abs(ro) >= 0.005:
-        # round_off is what is added to the bill: -0.44 lowers it (a debit in Tally), +0.08 raises it (a credit)
-        taxes += _ledger(cfg["round_off"], ro) + "</LEDGERENTRIES.LIST>\n"
+        taxes += _round_off(cfg["round_off"], ro)
     party_led = _ledger(pl["party"], -total, party=True)
     return f"""<VOUCHER VCHTYPE="{_x(cfg['vtype'])}" ACTION="Create" OBJVIEW="Invoice Voucher View">
 <DATE>{_tdate(d['inv_date'])}</DATE><EFFECTIVEDATE>{_tdate(d['inv_date'])}</EFFECTIVEDATE>
 <VOUCHERTYPENAME>{_x(cfg['vtype'])}</VOUCHERTYPENAME><VOUCHERNUMBER>{_x(d['inv_no'])}</VOUCHERNUMBER>
 <PARTYLEDGERNAME>{_x(pl['party'])}</PARTYLEDGERNAME><BASICBUYERNAME>{_x(pl['party'])}</BASICBUYERNAME>
-{_party_xml(pl, tp)}
+{_party_xml(pl)}
 <NARRATION>{_x(d['remarks'])}</NARRATION><ISINVOICE>Yes</ISINVOICE>
 <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW><VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
 {order}
@@ -673,7 +709,7 @@ def voucher_xml(d, cfg=None):
 <ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>{_x(d['item_name'])}</STOCKITEMNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
 <ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>
 <RATE>{d['rate']:.2f}/{unit}</RATE><AMOUNT>{amt:.2f}</AMOUNT><ACTUALQTY>{qty}</ACTUALQTY><BILLEDQTY>{qty}</BILLEDQTY>
-{batch}
+{item_udf}{batch}
 <ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>{_x(sales)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE><AMOUNT>{amt:.2f}</AMOUNT></ACCOUNTINGALLOCATIONS.LIST>
 </ALLINVENTORYENTRIES.LIST>
 {taxes}</VOUCHER>"""
@@ -700,11 +736,8 @@ def send_plan(ids):
             continue
         plants.add(d["plant"])
         out.append(dict(id=d["id"], inv_no=d["inv_no"], xml=import_xml(d, cfg)))
-    t = cfg.get("templates") or {}
-    need = sorted(p for p in plants if p not in t)
-    no_fields = sorted(p for p in plants if not any(u["role"] in ("pieces", "packages", "qty")
-                                                    for u in (t.get(p) or {}).get("udf", [])))
-    return dict(items=out, skipped=skipped, need_learn=need, no_fields=no_fields)
+    # the invoice format (TDL fields, party details, Round Off) is built in from Tally's real invoices
+    return dict(items=out, skipped=skipped, need_learn=[], no_fields=[])
 
 
 def tally_result(did, text):
