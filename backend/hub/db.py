@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS drinv_drafts(
     qty REAL, pieces REAL, packages REAL, kgs TEXT, rate REAL, rate_po REAL, amount REAL, cgst REAL, sgst REAL,
     igst REAL, round_off REAL, total REAL, remarks TEXT, status TEXT, issues TEXT, file_name TEXT,
     created_by TEXT, created_at TEXT, verified_by TEXT, verified_at TEXT, sent_by TEXT, sent_at TEXT,
-    tally_msg TEXT, last_rate REAL, last_inv TEXT, title TEXT, UNIQUE(dr_no, part));
+    tally_msg TEXT, last_rate REAL, last_inv TEXT, title TEXT, price_date TEXT, UNIQUE(dr_no, part));
 -- "Read Tally structure": raw XML Tally gave for chosen invoices and ledgers, to match Tally's own format
 CREATE TABLE IF NOT EXISTS drinv_samples(
     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, kind TEXT, ref TEXT, summary TEXT, text TEXT);
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS wipe_rows(
 # columns added after the first version: (table, column, type)
 MIGRATIONS = [
     ("po_headers", "source", "TEXT"),
-    ("drinv_drafts", "title", "TEXT"),
+    ("drinv_drafts", "title", "TEXT"), ("drinv_drafts", "price_date", "TEXT"),
     ("run_lines", "old_src", "TEXT"),
     ("batches", "data", "BLOB"),
     ("chep_runs", "leap_status", "TEXT"), ("chep_runs", "leap_result", "TEXT"), ("chep_runs", "leap_at", "TEXT"),

@@ -60,8 +60,8 @@ function render() {
     // one compact line per invoice (fits the page width, no sideways scrolling); the points to check go in a
     // thin line under it
     t.innerHTML = `<colgroup><col style="width:2.5%"><col style="width:10.5%"><col style="width:8.5%"><col style="width:16%">
-        <col style="width:14%"><col style="width:5%"><col style="width:5.5%"><col style="width:10%"><col style="width:7.5%">
-        <col style="width:15%"><col style="width:5.5%"></colgroup>
+        <col style="width:14%"><col style="width:5%"><col style="width:8.5%"><col style="width:10%"><col style="width:7.5%">
+        <col style="width:12%"><col style="width:5.5%"></colgroup>
         <thead><tr><th><input type="checkbox" ${allOn ? 'checked' : ''} onchange="tickAll(this.checked)"></th>
         <th>Invoice no · date</th><th>Plant · DR · PO</th><th>Part · Tally item</th>
         <th title="TOTAL NOS / NO OF PACKAGES / NO OF PICES in Tally">Total nos · Packages · Pieces</th><th>Title</th>
@@ -82,7 +82,8 @@ function render() {
                 <div class="di-small">DR ${num(d.dr_req)} ${esc(d.bin || '')} × ${num(d.dr_size)} = ${num(d.dr_qty)}</div></td>
             <td>${ed(d, 'title', d.title ?? 'KANBAN', 'small')}</td>
             <td class="num">${ed(d, 'rate', d.rate == null ? '' : (+d.rate).toFixed(2), 'num' + (d.rate ? '' : ' miss'))}
-                ${d.rate_po != null && d.rate != null && Math.abs(d.rate - d.rate_po) >= .005 ? `<div class="di-small">PO ${n2(d.rate_po)}</div>` : ''}</td>
+                ${d.rate_po != null && d.rate != null && Math.abs(d.rate - d.rate_po) >= .005 ? `<div class="di-small">PO ${n2(d.rate_po)}</div>` : ''}
+                ${priceCell(d)}</td>
             <td>${gstCell(d)}</td>
             <td class="num">${n2(d.amount)}<div><b>${n2(d.total)}</b></div>${d.round_off ? `<div class="di-small">R/O ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
             <td>${d.status === 'sent' ? `<span class="di-small">${esc(d.remarks || '')}</span>`
@@ -94,6 +95,30 @@ function render() {
         }).join('') + '</tbody>';
     const sum = ds.reduce((a, d) => a + (d.total || 0), 0);
     document.getElementById('di-foot').textContent = `${ds.length} invoice(s), total ₹${inr(sum)}. Ticked: ${DI.ticked.size}.`;
+}
+
+// PO price period: which of the PO's prices the invoice uses (picked by its "price as on" day)
+const sd = iso => iso && iso < '9999' ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}` : '';
+function priceCell(d) {
+    const on = d.price_date || d.inv_date;
+    if (d.status === 'sent') return d.price_date ? `<div class="di-small">price as on ${dmy(d.price_date)}</div>` : '';
+    const ps = d.periods || [];
+    if (!ps.length) return '<div class="di-small" style="color:#b91c1c">no PO price</div>';
+    const cur = ps.find(p => p.from <= on && on <= p.to);
+    const opts = ps.map(p => `<option value="${p.from}" ${cur === p ? 'selected' : ''} title="${sd(p.from)}${p.to < '9999' ? ' to ' + sd(p.to) : ' onwards'}">${n2(p.rate)} · ${p.from.slice(8, 10)}.${p.from.slice(5, 7)}</option>`).join('');
+    return `<select class="ed small pp" title="PO price period used" onchange="edit(${d.id}, 'price_date', this.value === '${esc(d.inv_date)}' ? '' : this.value)">
+        ${cur ? '' : '<option selected value="">no price on this day</option>'}${opts}</select>
+        ${d.price_date ? `<div class="di-small">as on ${sd(d.price_date)} <a href="#" onclick="edit(${d.id}, 'price_date', ''); return false" title="back to the invoice date">↺</a></div>` : ''}`;
+}
+
+async function priceDateTicked() {
+    const ids = tickedIds(); if (!ids.length) return;
+    const price_date = document.getElementById('bulk-price-date').value;
+    try {
+        DI.data = await apiJson('/api/drinv/price-date', 'POST', { ids, price_date });
+        render(); renderHistory();
+        showToast(`PO price ${price_date ? 'as on ' + dmy(price_date) : 'of the invoice date'} for ${ids.length} invoice(s) - verify them again`, 'success', 6000);
+    } catch (e) { showToast(e.message, 'danger'); }
 }
 
 // GST shown the way the invoice prints it: CGST 2.5 % + SGST 2.5 % (MDU, Tamil Nadu) or IGST 5 % (DBR)
@@ -143,7 +168,8 @@ async function uploadDRs(files) {
         row.innerHTML = `<span class="status-badge muted">…</span><span class="file">${esc(f.name)}</span><span class="msg">Reading…</span>`;
         box.appendChild(row);
         try {
-            const r = await api(`/api/drinv/upload?name=${encodeURIComponent(f.name)}&date=${date}`, { method: 'POST', body: f });
+            const pd = document.getElementById('price-date').value;
+            const r = await api(`/api/drinv/upload?name=${encodeURIComponent(f.name)}&date=${date}${pd ? `&price_date=${pd}` : ''}`, { method: 'POST', body: f });
             row.querySelector('.status-badge').className = 'status-badge active';
             row.querySelector('.status-badge').textContent = 'OK';
             row.querySelector('.msg').textContent = r.message;

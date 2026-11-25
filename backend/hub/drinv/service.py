@@ -32,7 +32,7 @@ DEFAULT = dict(
 GST18 = {"0714224M02", "0714315M03", "1812P03001"}
 EWAY_LIMIT = 50000
 EDITABLE = ("inv_no", "inv_date", "qty", "pieces", "packages", "kgs", "rate", "remarks", "item_name", "gst_rate",
-            "title")
+            "title", "price_date")
 DEFAULT_TITLE = "KANBAN"
 VENDOR_CODE = "DS1615"           # SDEW's TAFE vendor code (TAFE Key ID: DS1615$PO$invoice$date)
 
@@ -294,8 +294,9 @@ def _plant(po_no):
     return p
 
 
-def add_pdf(name, data, inv_date=None):
-    """One DR PDF -> drafts (one per part). -> message."""
+def add_pdf(name, data, inv_date=None, price_date=None):
+    """One DR PDF -> drafts (one per part). price_date: take the PO price valid on this day instead of the
+    invoice date (e.g. the old price before a revision). -> message."""
     lines = dr_pdf.parse_pdf(data)
     if not lines:
         raise ValueError("Not a TAFE Delivery Request (no DR number / part lines found)")
@@ -309,7 +310,7 @@ def add_pdf(name, data, inv_date=None):
             skipped += 1
             continue
         h = hist.get(x["part"]) or {}
-        rate = _rate(x["order_no"], x["part"], inv_date)
+        rate = _rate(x["order_no"], x["part"], price_date or inv_date)
         gst = h.get("gst") or (18.0 if x["part"] in GST18 else 5.0)
         d = dict(dr_no=x["dr_no"], part=x["part"], plant=_plant(x["order_no"]), po_no=x["order_no"],
                  descr=x["descr"], bin=x["bin"], dr_req=x["req"], dr_size=x["size"], dr_qty=x["qty"],
@@ -317,7 +318,7 @@ def add_pdf(name, data, inv_date=None):
                  pieces=None, packages=None, kgs="", rate=rate, rate_po=rate,   # entered by the office (packing)
                  remarks=remarks_for(h, x["req"], x["dr_no"], x["bin"]), status="draft", file_name=name,
                  created_by=_user(), created_at=_now(), last_rate=h.get("last_rate"), last_inv=h.get("last_inv"),
-                 title=DEFAULT_TITLE)
+                 title=DEFAULT_TITLE, price_date=price_date if price_date and price_date != inv_date else None)
         compute(d)
         d["_dr_done"] = done.get(x["dr_no"])
         d["issues"] = json.dumps(check(d))
@@ -335,6 +336,48 @@ def add_pdf(name, data, inv_date=None):
         msg += f" - already invoiced in Tally as {done[dr]}"
     log_event("Uploaded DR", f"{name}: {msg}", [f"DR {x['dr_no']} {x['part']}" for x in lines])
     return dict(message=msg, made=made, skipped=skipped)
+
+
+def price_periods(blocks):
+    """PO price blocks -> [dict(from='2026-08-01', to='9999-12-31', rate=154.62)], oldest first."""
+    out = []
+    for b in blocks or []:
+        try:
+            f = "-".join(reversed(b["frm"].split(".")))
+            t = "-".join(reversed(b["to"].split(".")))
+            out.append(dict(**{"from": f}, to=t, rate=round(sum(b["conds"].values()), 2)))
+        except Exception:  # noqa: BLE001
+            continue
+    return sorted(out, key=lambda x: x["from"])
+
+
+def _add_periods(ds):
+    """Each draft gets its PO line's price periods, so the price date can be picked in the list."""
+    keys = sorted({(d["po_no"], d["part"]) for d in ds if d.get("status") != "sent"})
+    got = {}
+    for i in range(0, len(keys), 100):
+        part = keys[i:i + 100]
+        q = " OR ".join("(po_no=? AND part=?)" for _ in part)
+        for r in rows(f"SELECT po_no, part, blocks FROM po_items WHERE {q}", tuple(v for k in part for v in k)):
+            try:
+                got[(r["po_no"], r["part"])] = price_periods(json.loads(r["blocks"] or "[]"))
+            except Exception:  # noqa: BLE001
+                pass
+    for d in ds:
+        d["periods"] = got.get((d["po_no"], d["part"]), [])
+
+
+def set_price_date(ids, price_date):
+    """Price date for many invoices at once ('' = the invoice date again)."""
+    n = 0
+    for did in ids:
+        try:
+            update(int(did), {"price_date": price_date or ""})
+            n += 1
+        except ValueError:
+            pass
+    log_event("Price date", f"{n} invoice(s): PO price as on {price_date or 'the invoice date'}")
+    return n
 
 
 def _row(r):
@@ -372,6 +415,7 @@ def recheck(ids=None):
 def listing(status=""):
     q = "SELECT * FROM drinv_drafts" + (" WHERE status=?" if status else "") + " ORDER BY status='sent', inv_no='', inv_no, id"
     ds = [_row(r) for r in rows(q, (status,) if status else ())]
+    _add_periods(ds)
     cnt = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM drinv_drafts GROUP BY status")}
     return dict(drafts=ds, counts=cnt, next_no=next_number(), config=public_config(), history=history_log())
 
@@ -399,11 +443,14 @@ def update(did, patch):
             if k in ("qty", "pieces", "packages", "rate", "gst_rate"):
                 v = float(v) if str(v).strip() not in ("", "None") else None
             d[k] = v.strip() if isinstance(v, str) else v
-    if "inv_date" in patch and "rate" not in patch:
-        r = _rate(d["po_no"], d["part"], d["inv_date"])
+    if "price_date" in patch:
+        d["price_date"] = (patch.get("price_date") or "").strip() or None
+    on = d.get("price_date") or d["inv_date"]             # the day whose PO price is used
+    if ("inv_date" in patch or "price_date" in patch) and "rate" not in patch:
+        r = _rate(d["po_no"], d["part"], on)
         d["rate"] = d["rate_po"] = r
-    elif "inv_date" in patch:
-        d["rate_po"] = _rate(d["po_no"], d["part"], d["inv_date"])
+    elif "inv_date" in patch or "price_date" in patch:
+        d["rate_po"] = _rate(d["po_no"], d["part"], on)
     q = float(d.get("qty") or 0)
     if "packages" in patch and "pieces" not in patch and d.get("packages") and q % float(d["packages"]) == 0:
         d["pieces"] = q / float(d["packages"])

@@ -64,7 +64,9 @@
                 <div class="card">
                     <div class="card-title">Upload Delivery Requests</div>
                     <div class="di-row"><label for="inv-date">Invoice date</label><input type="date" id="inv-date">
-                        <span class="di-small">the PO price valid on this date is used</span></div>
+                        <label for="price-date">PO price as on</label><input type="date" id="price-date">
+                        <span class="di-small">leave empty to use the PO price valid on the invoice date; pick an earlier day for the
+                            price before a revision (e.g. 31-07-2026 for the old price). Each invoice can be changed in the list.</span></div>
                     <label class="dropzone compact">
                         <input type="file" multiple accept=".pdf" onchange="uploadDRs(this.files); this.value=''">
                         <strong>Drop the DR PDFs here</strong><span>DeliveryRequest_….pdf from TAFE Channel, many at once</span>
@@ -79,6 +81,9 @@
                     <input type="text" id="start-no" style="width:130px;padding:.35rem .5rem;border:1px solid #cbd5e1;border-radius:8px">
                     <button class="btn btn-secondary btn-sm" onclick="nextFromTally()" title="Ask Tally for its last GST SALES NEW number">Get from Tally</button>
                     <button class="btn btn-secondary btn-sm" onclick="giveNumbers()">Give numbers to ticked</button>
+                    <span class="di-small" style="margin-left:.6rem">PO price as on</span>
+                    <input type="date" id="bulk-price-date" style="padding:.3rem .45rem;border:1px solid #cbd5e1;border-radius:8px">
+                    <button class="btn btn-secondary btn-sm" onclick="priceDateTicked()" title="Empty date = the invoice date">Apply to ticked</button>
                     <span class="di-small" id="tally-last"></span>
                     <span class="sp"></span>
                     <button class="btn btn-secondary btn-sm" onclick="verify(false)">Back to draft</button>

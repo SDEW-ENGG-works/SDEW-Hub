@@ -29,7 +29,7 @@ def upload(req):
     if not data:
         raise ApiError("Empty file")
     try:
-        return service.add_pdf(name, data, req.arg("date") or None)
+        return service.add_pdf(name, data, req.arg("date") or None, req.arg("price_date") or None)
     except ValueError as e:
         raise ApiError(str(e))
     except Exception as e:  # noqa: BLE001
@@ -60,6 +60,13 @@ def verify(req):
     out = service.listing()
     out["not_verified"] = bad
     return out
+
+
+@route("POST", r"/api/price-date")
+def price_date(req):
+    b = req.json or {}
+    service.set_price_date(_ids(req), (b.get("price_date") or "").strip())
+    return service.listing()
 
 
 @route("POST", r"/api/delete")
