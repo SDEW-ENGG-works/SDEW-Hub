@@ -7,3 +7,5 @@ vercel-sandbox>=0.9
 vercel-blob>=0.5
 # only for Fetch GRIN, the DQMS report button and the LEAP upload (PC only):
 # playwright>=1.40   then run:  python -m playwright install chromium
+# PC only, optional (Phase 3): reads from a local copy of Turso when .env has HUB_LOCAL_REPLICA=1
+# libsql>=0.1.11

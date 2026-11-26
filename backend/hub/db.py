@@ -383,7 +383,8 @@ def _connect():
         raise DatabaseUnavailable(NOT_SET_ON_VERCEL)
     if cloud:
         from .turso import Connection
-        return Connection(*cloud)
+        from .replica import wrap
+        return wrap(Connection(*cloud), *cloud)     # PC with HUB_LOCAL_REPLICA=1: reads from a local copy
     con = sqlite3.connect(config.DB_FILE, timeout=30, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
