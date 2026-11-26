@@ -425,6 +425,8 @@ def add_pdf(name, data, inv_date=None, price_date=None):
         msg += f" ({skipped} already here)"
     if dr in done:
         msg += f" - already invoiced in Tally as {done[dr]}"
+    from . import dqms_link
+    dqms_link.push_drs(lines, name)                     # the same DR for DQMS Upload
     made_rows = [snap(r) for r in rows(f"SELECT * FROM drinv_drafts WHERE dr_no IN ({','.join('?' * len(lines))})",
                                        tuple(x["dr_no"] for x in lines))]
     log_event("Uploaded DR", f"{name}: {msg}", [f"DR {x['dr_no']} {x['part']}" for x in lines], made_rows)
@@ -596,6 +598,9 @@ def verify(ids, on=True, force=False):
                     ("verified" if on else "draft", _user() if on else None, _now() if on else None,
                      None if d["status"] == "sent" else d.get("tally_msg"), d["id"]))
         done.append(d["inv_no"] or f"DR {d['dr_no']}")
+        if d["status"] == "sent":
+            from . import dqms_link
+            dqms_link.remove_invoice(d["inv_no"])
         snaps.append(dict(snap(d), status="verified" if on else "draft"))
     con.commit()
     if done:
@@ -894,6 +899,8 @@ def tally_result(did, text):
                     (_user(), _now(), "Created in Tally", did))
         con.commit()
         log_event("Sent to Tally", d.get("inv_no") or "", [d.get("inv_no")], dict(snap(d), status="sent"))
+        from . import dqms_link
+        dqms_link.push_invoice(dict(d, status="sent"), config())   # DQMS gets the invoice, no PDF needed
         return dict(ok=True)
     msg = "; ".join(html.unescape(e).strip() for e in errs) or (text or "").strip()[:300] or "Tally gave no answer"
     con.execute("UPDATE drinv_drafts SET tally_msg=? WHERE id=?", (msg, did))
@@ -1181,7 +1188,7 @@ def gone_from_tally(t):
         return []
     since = (date.today() - timedelta(days=44)).isoformat()
     con = get_db()
-    out, renumbered = [], []
+    out, renumbered, moved = [], [], []
     by_dr = t.get("by_dr") or {}
     for d in rows("SELECT id, inv_no, dr_no FROM drinv_drafts WHERE status='sent' AND inv_date>=? AND inv_no<>''", (since,)):
         real = by_dr.get(d["dr_no"])
@@ -1190,10 +1197,12 @@ def gone_from_tally(t):
             con.execute("UPDATE drinv_drafts SET inv_no=?, tally_msg=? WHERE id=?",
                         (real, f"In Tally as {real} (sent as {d['inv_no']})", d["id"]))
             renumbered.append(f"{d['inv_no']} → {real}")
+            moved.append((d["id"], d["inv_no"]))
         elif not real and d["inv_no"].strip() not in t["numbers"]:
             con.execute("UPDATE drinv_drafts SET status='draft', inv_no='', tally_msg=? WHERE id=?",
                         (f"{d['inv_no']} is not in Tally any more (deleted there?) - send it again", d["id"]))
             out.append(d["inv_no"])
+            moved.append((None, d["inv_no"]))
     # the hub's copy of Tally: invoices Tally no longer has are marked deleted (as the nightly check does), so
     # "already exists in Tally" and the next number follow Tally now. Only when Tally's answer looks complete.
     hub = rows("SELECT vkey, vno FROM gp_tally_vouchers WHERE vtype=? AND vdate>=? AND COALESCE(deleted,0)=0",
@@ -1206,8 +1215,26 @@ def gone_from_tally(t):
             log_event("Not in Tally any more", "hub's copy of Tally: " + ", ".join(r["vno"] for r in gone) + " marked deleted")
     if out or gone or renumbered:
         con.commit()
+    if moved:                                           # DQMS follows Tally's number / drops it
+        from . import dqms_link
+        cfg = config()
+        for did, old_no in moved:
+            dqms_link.remove_invoice(old_no)
+            if did:
+                nd = one("SELECT * FROM drinv_drafts WHERE id=?", (did,))
+                if nd:
+                    dqms_link.push_invoice(nd, cfg)
     if renumbered:
         log_event("Number in Tally", "Tally saved hub invoices under its own numbers: " + ", ".join(renumbered), renumbered)
     if out:
         log_event("Not in Tally any more", ", ".join(out) + " - back to draft", out)
     return out
+
+
+def dqms_sync():
+    """Every sent invoice and every DR of DR -> Invoice into DQMS Upload."""
+    from . import dqms_link
+    r = dqms_link.sync_all(rows("SELECT * FROM drinv_drafts"), config())
+    if r["invoices"] or r["drs"]:
+        log_event("Linked to DQMS", f"{r['invoices']} invoice(s), {r['drs']} DR line(s) copied to DQMS Upload")
+    return r

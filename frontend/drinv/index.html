@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="css/03-tables.css?v=39af8da3c3">
     <link rel="stylesheet" href="css/06-modals.css?v=3bc1a85add">
     <link rel="stylesheet" href="css/20-supp.css?v=8236058a1a">
-    <link rel="stylesheet" href="css/40-drinv.css?v=d2e841c90c">
+    <link rel="stylesheet" href="css/40-drinv.css?v=c3f84fb58c">
     <link rel="stylesheet" href="/css/hub.css?v=37c6e7d030">
     <script src="/js/hubbar.js?v=8a6ce7fedc"></script>
 </head>
@@ -122,6 +122,8 @@
                     <p class="hint">Voucher type <b id="t-vtype"></b><span id="t-company"></span>. Party ledgers:
                         <span id="t-parties"></span></p>
                     <ul class="di-learn" id="t-learned"></ul>
+                    <div class="di-row"><button class="btn btn-secondary btn-sm" onclick="dqmsSync()">Copy to DQMS Upload now</button>
+                        <span class="di-small">DRs uploaded here and invoices sent to Tally go to DQMS Upload by themselves; this copies any missed.</span></div>
                 </div>
 
             <div class="card">
@@ -177,7 +179,7 @@
     <div id="toast-container"></div>
 
     <script src="js/core/utils.js?v=f0aeaaa393"></script>
-    <script src="js/main.js?v=827271dc8f"></script>
+    <script src="js/main.js?v=b01f5651c4"></script>
 </body>
 
 </html>

@@ -226,6 +226,7 @@ def tally_next(req):
         raise ApiError(str(e))
     reopened = service.gone_from_tally(t)
     service.recheck()
+    service.dqms_sync()
     return dict(last=t["last"], next=t["next"], source=t["source"], count=t["count"], reopened=reopened)
 
 
@@ -237,3 +238,8 @@ def assign_numbers(req):
     except ValueError as e:
         raise ApiError(str(e))
     return r
+
+
+@route("POST", r"/api/dqms-sync")
+def dqms_sync(req):
+    return service.dqms_sync()

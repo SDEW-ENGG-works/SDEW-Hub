@@ -578,6 +578,11 @@ async function pullDC() {
     loadDC();
 }
 
+async function dqmsSync() {
+    try { const r = await apiJson('/api/drinv/dqms-sync', 'POST', {}); showToast(`DQMS Upload: ${r.invoices} invoice(s), ${r.drs} new DR line(s) copied`, 'success', 7000); }
+    catch (e) { showToast(e.message, 'danger'); }
+}
+
 // ---------- tabs: Main page / History / Admin (Admin only for admins when login is on)
 function switchView(name) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
