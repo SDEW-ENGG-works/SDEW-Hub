@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS tally_dc_lines(
     order_no TEXT, PRIMARY KEY(vkey, seq));
 CREATE INDEX IF NOT EXISTS ix_tally_dc_lines_part ON tally_dc_lines(part);
 CREATE TABLE IF NOT EXISTS drinv_log(
-    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, action TEXT, detail TEXT, invoices TEXT);
+    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, user TEXT, action TEXT, detail TEXT, invoices TEXT, data TEXT);
 CREATE TABLE IF NOT EXISTS m_plants(
     code TEXT PRIMARY KEY, name TEXT, seen_at TEXT);
 -- every master refresh: the 8 am / 9 pm runs (slot 'yyyy-mm-dd HH:MM') and Refresh now (slot 'manual ...')
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS wipe_rows(
 # columns added after the first version: (table, column, type)
 MIGRATIONS = [
     ("po_headers", "source", "TEXT"),
-    ("drinv_drafts", "title", "TEXT"), ("drinv_drafts", "price_date", "TEXT"),
+    ("drinv_drafts", "title", "TEXT"), ("drinv_drafts", "price_date", "TEXT"), ("drinv_log", "data", "TEXT"),
     ("run_lines", "old_src", "TEXT"),
     ("batches", "data", "BLOB"),
     ("chep_runs", "leap_status", "TEXT"), ("chep_runs", "leap_result", "TEXT"), ("chep_runs", "leap_at", "TEXT"),

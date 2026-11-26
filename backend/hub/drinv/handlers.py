@@ -77,7 +77,7 @@ def delete(req):
 
 @route("GET", r"/api/history")
 def history(req):
-    return service.history_log(int(req.arg("limit") or 200))
+    return service.history_groups(action=req.arg("action") or "", day=req.arg("day") or "")
 
 
 @route("POST", r"/api/config")

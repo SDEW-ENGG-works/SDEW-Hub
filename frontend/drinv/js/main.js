@@ -72,9 +72,9 @@ function render() {
         `placeholder="enter"${hint ? ` title="${esc(hint)}"` : ''}`)}</label>`;
     // one compact line per invoice (fits the page width, no sideways scrolling); the points to check go in a
     // thin line under it
-    t.innerHTML = `<colgroup><col style="width:2.5%"><col style="width:10.5%"><col style="width:8.5%"><col style="width:16%">
-        <col style="width:14%"><col style="width:5%"><col style="width:8.5%"><col style="width:10%"><col style="width:7.5%">
-        <col style="width:12%"><col style="width:5.5%"></colgroup>
+    t.innerHTML = `<colgroup><col style="width:2.5%"><col style="width:10%"><col style="width:8%"><col style="width:14.5%">
+        <col style="width:14%"><col style="width:7%"><col style="width:8.5%"><col style="width:10%"><col style="width:7.5%">
+        <col style="width:13%"><col style="width:5%"></colgroup>
         <thead><tr><th><input type="checkbox" ${allOn ? 'checked' : ''} onchange="tickAll(this.checked)"></th>
         <th>Invoice no · date</th><th>Plant · DR · PO</th><th>Part · Tally item</th>
         <th title="TOTAL NOS / NO OF PACKAGES / NO OF PICES in Tally">Total nos · Packages · Pieces</th><th>Title</th>
@@ -100,7 +100,7 @@ function render() {
             <td>${gstCell(d)}</td>
             <td class="num">${n2(d.amount)}<div><b>${n2(d.total)}</b></div>${d.round_off ? `<div class="di-small">R/O ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
             <td>${d.status === 'sent' ? `<span class="di-small">${esc(d.remarks || '')}</span>`
-                : `<textarea class="ed small" rows="2" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`}</td>
+                : `<textarea class="ed small rem" rows="${Math.max(2, Math.ceil((d.remarks || '').length / 20))}" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`}</td>
             <td><span class="di-b ${d.status}${st === 'Ready' ? ' ready' : ''}">${st}</span>
                 ${d.verified_by && d.status !== 'draft' ? `<div class="di-small">${esc(d.verified_by)}</div>` : ''}</td>
             </tr>` + (sub ? `<tr class="${d.status} sub"><td></td><td colspan="10"><div class="di-iss">${notes.map(i => `<span class="${i.level}">${esc(i.text).replace(/DR (\d{7,9})/g, (m, dr) => `<a href="#" onclick="findInvoice('${dr}');return false">DR ${dr}</a>`)}</span>`).join('')}
@@ -145,12 +145,100 @@ function gstCell(d) {
     return `<div class="di-small">GST ${rate}</div>${lines}`;
 }
 
-function renderHistory() {
-    const h = (DI.data && DI.data.history) || [];
-    document.getElementById('di-history').innerHTML = h.length ? `<thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead><tbody>` +
-        h.map(x => `<tr><td style="white-space:nowrap">${esc(when(x.at))}</td><td>${esc(x.user || '')}</td><td><b>${esc(x.action)}</b></td>
-            <td>${esc(x.detail || '')}${x.invoices && x.invoices.length > 1 ? `<div class="di-small">${esc(x.invoices.join(', '))}</div>` : ''}</td></tr>`).join('') + '</tbody>'
-        : '<tr><td class="muted" style="padding:.8rem">Nothing yet.</td></tr>';
+function renderHistory() { if (document.getElementById('history-view').classList.contains('active')) loadHistory(); }
+
+// ---------- History: batches (same action, same person, within 15 minutes), each opens to its invoices
+const HS = { action: '', open: new Set(), data: null };
+const HS_LOOK = {
+    'Sent to Tally': ['#166534', '#dcfce7', g => `Sent ${g.count} invoice${g.count > 1 ? 's' : ''} to Tally`],
+    'Tally refused': ['#991b1b', '#fee2e2', g => `Tally refused ${g.count} invoice${g.count > 1 ? 's' : ''}`],
+    'Uploaded DR': ['#1e40af', '#dbeafe', g => `Uploaded ${g.events} DR file${g.events > 1 ? 's' : ''} → ${g.count} invoice draft${g.count > 1 ? 's' : ''}`],
+    'Verified': ['#3730a3', '#e0e7ff', g => `Verified ${g.count} invoice${g.count > 1 ? 's' : ''}`],
+    'Numbered': ['#92400e', '#fef3c7', g => `Numbered ${g.count} invoice${g.count > 1 ? 's' : ''}`],
+    'Numbered from Tally': ['#92400e', '#fef3c7', g => `Numbered ${g.count} invoice${g.count > 1 ? 's' : ''} from Tally's last number`],
+    'Deleted drafts': ['#475569', '#f1f5f9', g => `Deleted ${g.count} draft${g.count > 1 ? 's' : ''}`],
+};
+const hsTime = iso => new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const hsClock = iso => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+async function loadHistory() {
+    const day = document.getElementById('hs-day').value;
+    try { HS.data = await api(`/api/drinv/history?action=${encodeURIComponent(HS.action)}&day=${day}`); }
+    catch (e) { return showToast(e.message, 'danger'); }
+    const acts = ['', ...HS.data.actions];
+    document.getElementById('hs-chips').innerHTML = acts.map(a => `<button class="di-chip ${HS.action === a ? 'on' : ''}"
+        onclick="HS.action='${esc(a)}';HS.open.clear();loadHistory()">${esc(a || 'All')}</button>`).join('');
+    const gs = HS.data.groups;
+    const sent = gs.filter(g => g.action === 'Sent to Tally');
+    document.getElementById('hs-sum').innerHTML = gs.length ? `${gs.length} batch${gs.length > 1 ? 'es' : ''}` +
+        (sent.length ? ` · <b>${sent.reduce((a, g) => a + g.count, 0)}</b> invoices sent to Tally for <b>₹${inr(sent.reduce((a, g) => a + g.total, 0))}</b>` : '') : '';
+    document.getElementById('hs-list').innerHTML = gs.length ? gs.map((g, i) => hsBatch(g, i)).join('')
+        : '<p class="muted" style="padding:1rem">Nothing here.</p>';
+}
+
+function hsBatch(g, i) {
+    const [fg, bg, title] = HS_LOOK[g.action] || ['#334155', '#f1f5f9', x => `${x.action}${x.count > 1 ? ` (${x.count})` : ''}`];
+    const key = `${g.action}|${g.start}`, open = HS.open.has(key);
+    const range = g.first ? (g.first === g.last ? g.first : `${g.first} → ${g.last}`) : '';
+    const plants = Object.entries(g.plants || {}).map(([p, n]) => `${p} ${n}`).join(' · ');
+    const when = g.start.slice(0, 16) === g.end.slice(0, 16) ? hsTime(g.start) : `${hsTime(g.start)} – ${hsClock(g.end)}`;
+    return `<div class="hs-batch ${open ? 'open' : ''}">
+        <div class="hs-head" onclick="hsToggle('${esc(key)}')">
+            <span class="hs-arrow">${open ? '▾' : '▸'}</span>
+            <span class="hs-when">${esc(when)}</span>
+            <span class="hs-badge" style="color:${fg};background:${bg}">${esc(g.action)}</span>
+            <span class="hs-title">${esc(title(g))}</span>
+            ${range ? `<span class="hs-meta">${esc(range)}</span>` : ''}
+            ${plants ? `<span class="hs-meta">${esc(plants)}</span>` : ''}
+            ${g.total ? `<span class="hs-amt">₹${inr(g.total)}</span>` : ''}
+            <span class="hs-who">${esc(g.user || '')}</span>
+        </div>
+        ${open ? hsDetail(g, i) : ''}
+    </div>`;
+}
+
+function hsToggle(key) { HS.open.has(key) ? HS.open.delete(key) : HS.open.add(key); loadHistoryRender(); }
+function loadHistoryRender() {
+    if (!HS.data) return loadHistory();
+    document.getElementById('hs-list').innerHTML = HS.data.groups.map((g, i) => hsBatch(g, i)).join('');
+}
+
+function hsDetail(g, i) {
+    const it = g.items || [];
+    if (!it.length) return `<div class="hs-body"><ul class="hs-notes">${g.details.map(d => `<li>${esc(d)}</li>`).join('')}</ul></div>`;
+    const tax = x => x.igst ? `IGST ${num(x.gst_rate)}% ₹${n2(x.igst)}` : (x.cgst ? `CGST ${num(x.gst_rate / 2)}% ₹${n2(x.cgst)} · SGST ₹${n2(x.sgst)}` : '');
+    const rows = it.map(x => `<tr>
+        <td><b>${esc(x.inv_no || '—')}</b><div class="di-small">${x.inv_date ? dmy(x.inv_date) : ''}</div></td>
+        <td><b>${esc(x.plant || '')}</b><div class="di-small">DR ${esc(x.dr_no || '')}</div><div class="di-small">PO ${esc(x.po_no || '')}</div></td>
+        <td><b>${esc(x.part || '')}</b><div class="di-small">${esc(x.item_name || x.descr || '')}</div></td>
+        <td class="num">${num(x.qty)}</td><td class="num">${num(x.packages)}</td><td class="num">${num(x.pieces)}</td>
+        <td class="num">${x.rate != null ? n2(x.rate) : ''}${x.price_date ? `<div class="di-small">as on ${dmy(x.price_date)}</div>` : ''}</td>
+        <td class="num">${n2(x.amount)}</td><td class="di-small">${tax(x)}</td>
+        <td class="num"><b>${n2(x.total)}</b>${x.round_off ? `<div class="di-small">R/O ${(+x.round_off).toFixed(2)}</div>` : ''}</td>
+        <td class="di-small">${esc(x.remarks || '')}</td>
+        <td class="di-small">${esc(x.tally_msg || x.status || '')}</td></tr>`).join('');
+    const sum = k => it.reduce((a, x) => a + (+x[k] || 0), 0);
+    return `<div class="hs-body">
+        <div class="hs-tools"><span class="di-small">${it.length} invoice(s) · taxable ₹${inr(sum('amount'))} · GST ₹${inr(sum('cgst') + sum('sgst') + sum('igst'))} · total ₹${inr(sum('total'))}</span>
+            <button class="btn btn-secondary btn-sm" onclick="hsCsv(${i})">Download (Excel CSV)</button></div>
+        <div class="table-wrapper"><table class="data-table compact hs-table">
+        <thead><tr><th>Invoice</th><th>Plant · DR · PO</th><th>Part · Tally item</th><th class="num">Total nos</th><th class="num">Pkgs</th>
+        <th class="num">Pcs</th><th class="num">Rate</th><th class="num">Taxable</th><th>GST</th><th class="num">Total</th><th>Remarks</th><th>Result</th></tr></thead>
+        <tbody>${rows}<tr class="hs-tot"><td colspan="3"><b>Total</b></td><td class="num">${num(sum('qty'))}</td><td class="num">${num(sum('packages'))}</td><td></td><td></td>
+        <td class="num">${n2(sum('amount'))}</td><td class="di-small">₹${n2(sum('cgst') + sum('sgst') + sum('igst'))}</td><td class="num"><b>${n2(sum('total'))}</b></td><td></td><td></td></tr></tbody>
+        </table></div></div>`;
+}
+
+function hsCsv(i) {
+    const g = HS.data.groups[i];
+    const cols = ['inv_no', 'inv_date', 'plant', 'party', 'dr_no', 'po_no', 'part', 'item_name', 'qty', 'packages', 'pieces', 'title', 'rate',
+        'price_date', 'gst_rate', 'amount', 'cgst', 'sgst', 'igst', 'round_off', 'total', 'remarks', 'status', 'tally_msg'];
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [cols.join(','), ...g.items.map(x => cols.map(c => q(x[c])).join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+    a.download = `${g.action.replace(/\W+/g, '_')}_${g.start.slice(0, 16).replace(/[:T]/g, '-')}.csv`;
+    a.click();
 }
 
 function tick(id, on) { on ? DI.ticked.add(id) : DI.ticked.delete(id); render(); }
@@ -497,7 +585,8 @@ function switchView(name) {
     document.getElementById(`${name}-view`).classList.add('active');
     document.getElementById(`nav-${name}-btn`).classList.add('active');
     try { history.replaceState(null, '', `#${name}`); } catch (e) { /* ignore */ }
-    if (name === 'history' || name === 'main') loadDrafts();
+    if (name === 'main') loadDrafts();
+    else if (name === 'history') loadHistory();
     else if (name === 'admin') { loadStructure(); loadDC(); }
 }
 

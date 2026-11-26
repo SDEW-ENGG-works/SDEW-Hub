@@ -52,3 +52,26 @@
 .di-iss .error { color: #b91c1c; } .di-iss .warn { color: #92400e; } .di-iss .info { color: #1e40af; }
 .di-iss span::before { content: "• "; }
 #di-table select.pp { display: block; width: 100%; margin-top: .2rem; font-size: .68rem; padding: .1rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; text-align: left; }
+
+/* History: batches */
+.hs-sum { font-size: .82rem; color: var(--muted, #64748b); margin: .2rem 0 .6rem; }
+.hs-batch { border: 1px solid var(--line, #e2e8f0); border-radius: 10px; margin-bottom: .5rem; background: #fff; }
+.hs-batch.open { border-color: #94a3b8; box-shadow: 0 2px 10px rgba(15, 23, 42, .06); }
+.hs-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .8rem; padding: .6rem .8rem; cursor: pointer; font-size: .85rem; }
+.hs-head:hover { background: #f8fafc; border-radius: 10px; }
+.hs-arrow { color: #64748b; width: 1rem; }
+.hs-when { font-weight: 600; color: var(--ink, #0f172a); min-width: 150px; }
+.hs-badge { font-size: .7rem; font-weight: 700; padding: .12rem .55rem; border-radius: 999px; white-space: nowrap; }
+.hs-title { font-weight: 600; }
+.hs-meta { color: var(--muted, #64748b); font-size: .8rem; }
+.hs-amt { font-weight: 700; margin-left: auto; }
+.hs-who { color: var(--muted, #64748b); font-size: .78rem; min-width: 60px; text-align: right; }
+.hs-body { padding: 0 .8rem .8rem; }
+.hs-tools { display: flex; justify-content: space-between; align-items: center; margin: .2rem 0 .5rem; gap: .5rem; flex-wrap: wrap; }
+.hs-table td { font-size: .78rem; vertical-align: top; padding: .4rem .5rem; }
+.hs-table th { font-size: .66rem; padding: .45rem .5rem; }
+.hs-table tr.hs-tot td { background: #f8fafc; border-top: 2px solid #cbd5e1; }
+.hs-notes { margin: 0; padding-left: 1.2rem; font-size: .8rem; }
+#di-table textarea.ed.rem { field-sizing: content; min-height: 2.6em; overflow: hidden; border-color: #e2e8f0; background: #fff; white-space: pre-wrap; }
+#di-table td:nth-child(6) input.ed { text-overflow: clip; padding-left: .2rem; padding-right: .2rem; }
+.hs-table td:first-child b { white-space: nowrap; }

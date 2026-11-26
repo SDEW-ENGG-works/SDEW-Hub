@@ -56,11 +56,22 @@ ITEM_UDF = [
 PO_ORDER_DATE = {"1030000676": "20170701", "1210000691": "20170701"}
 
 
-def log_event(action, detail, invoices=None):
-    """History box: who uploaded / verified / sent what, and when."""
+SNAP = ("id", "inv_no", "inv_date", "plant", "party", "dr_no", "po_no", "part", "descr", "item_name", "qty", "packages",
+        "pieces", "title", "rate", "price_date", "gst_rate", "amount", "cgst", "sgst", "igst", "round_off", "total",
+        "remarks", "status", "tally_msg", "file_name")
+
+
+def snap(d):
+    """What an invoice was at that moment (kept in the history)."""
+    return {k: d.get(k) for k in SNAP if k in d}
+
+
+def log_event(action, detail, invoices=None, data=None):
+    """History: who uploaded / numbered / verified / sent what, when - with what the invoices were then (data)."""
     try:
-        get_db().execute("INSERT INTO drinv_log(at, user, action, detail, invoices) VALUES(?,?,?,?,?)",
-                         (_now(), _user(), action, detail, json.dumps(invoices or [])))
+        get_db().execute("INSERT INTO drinv_log(at, user, action, detail, invoices, data) VALUES(?,?,?,?,?,?)",
+                         (_now(), _user(), action, detail, json.dumps(invoices or []),
+                          json.dumps(data, default=str) if data else None))
         get_db().commit()
     except Exception:  # noqa: BLE001
         pass
@@ -68,11 +79,75 @@ def log_event(action, detail, invoices=None):
 
 def history_log(limit=200):
     out = []
-    for r in rows("SELECT * FROM drinv_log ORDER BY id DESC LIMIT ?", (limit,)):
+    for r in rows("SELECT id, at, user, action, detail, invoices FROM drinv_log ORDER BY id DESC LIMIT ?", (limit,)):
         r = dict(r)
         r["invoices"] = json.loads(r.get("invoices") or "[]")
         out.append(r)
     return out
+
+
+GROUP_GAP_MIN = 15          # the same action by the same person within 15 minutes = one batch
+
+
+def history_groups(limit=2000, action="", day=""):
+    """The history as batches: e.g. 'Sent 15 invoices to Tally, 16356 to 16370, Rs 1,23,456' at 7:12-7:13 pm,
+    each with every invoice as it was then (number, DR, PO, part, qty, packages, pieces, rate, GST, total ...)."""
+    where, args = [], []
+    if action:
+        where.append("action=?")
+        args.append(action)
+    if day:
+        where.append("substr(at,1,10)=?")
+        args.append(day)
+    q = "SELECT * FROM drinv_log" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?"
+    logs = rows(q, tuple(args) + (limit,))
+    groups = []
+    for r in logs:
+        g = groups[-1] if groups else None
+        if g and g["action"] == r["action"] and g["user"] == (r["user"] or "") and \
+                (datetime.fromisoformat(g["start"]) - datetime.fromisoformat(r["at"])).total_seconds() <= GROUP_GAP_MIN * 60:
+            g["start"] = r["at"]
+            g["events"].append(r)
+        else:
+            groups.append(dict(action=r["action"], user=r["user"] or "", start=r["at"], end=r["at"], events=[r]))
+    # invoices as they are now, for history written before the snapshots were kept
+    need = set()
+    for g in groups:
+        for e in g["events"]:
+            if not e.get("data"):
+                need |= {x for x in json.loads(e.get("invoices") or "[]") if x and "/" in str(x)}
+    now = {}
+    need = sorted(need)
+    for i in range(0, len(need), 200):
+        part = need[i:i + 200]
+        for d in rows(f"SELECT * FROM drinv_drafts WHERE inv_no IN ({','.join('?' * len(part))})", tuple(part)):
+            now[d["inv_no"]] = snap(d)
+    out = []
+    for g in groups:
+        items, details = [], []
+        for e in reversed(g["events"]):                 # oldest first inside a batch
+            data = json.loads(e["data"]) if e.get("data") else None
+            if isinstance(data, list):
+                items += data
+            elif isinstance(data, dict):
+                items.append(data)
+            else:
+                for x in json.loads(e.get("invoices") or "[]"):
+                    if x in now:
+                        items.append(now[x])
+            details.append(e["detail"])
+        nos = [x.get("inv_no") for x in items if x.get("inv_no")]
+        plants = {}
+        for x in items:
+            if x.get("plant"):
+                plants[x["plant"]] = plants.get(x["plant"], 0) + 1
+        out.append(dict(action=g["action"], user=g["user"], start=g["start"], end=g["end"], events=len(g["events"]),
+                        items=items, details=details, count=len(items) or len(g["events"]),
+                        first=min(nos) if nos else "", last=max(nos) if nos else "",
+                        total=round(sum(float(x.get("total") or 0) for x in items), 2),
+                        taxable=round(sum(float(x.get("amount") or 0) for x in items), 2), plants=plants))
+    actions = [r["action"] for r in rows("SELECT action, COUNT(*) n FROM drinv_log GROUP BY action ORDER BY n DESC")]
+    return dict(groups=out, actions=actions)
 
 
 def _now():
@@ -350,7 +425,9 @@ def add_pdf(name, data, inv_date=None, price_date=None):
         msg += f" ({skipped} already here)"
     if dr in done:
         msg += f" - already invoiced in Tally as {done[dr]}"
-    log_event("Uploaded DR", f"{name}: {msg}", [f"DR {x['dr_no']} {x['part']}" for x in lines])
+    made_rows = [snap(r) for r in rows(f"SELECT * FROM drinv_drafts WHERE dr_no IN ({','.join('?' * len(lines))})",
+                                       tuple(x["dr_no"] for x in lines))]
+    log_event("Uploaded DR", f"{name}: {msg}", [f"DR {x['dr_no']} {x['part']}" for x in lines], made_rows)
     return dict(message=msg, made=made, skipped=skipped)
 
 
@@ -508,7 +585,7 @@ def verify(ids, on=True, force=False):
     'sent' (after it was deleted in Tally, to send it again)."""
     recheck(ids)
     con = get_db()
-    bad, done = [], []
+    bad, done, snaps = [], [], []
     for d in rows(f"SELECT * FROM drinv_drafts WHERE id IN ({','.join('?' * len(ids))})", tuple(ids)):
         if d["status"] == "sent" and not (force and not on):
             continue
@@ -519,20 +596,21 @@ def verify(ids, on=True, force=False):
                     ("verified" if on else "draft", _user() if on else None, _now() if on else None,
                      None if d["status"] == "sent" else d.get("tally_msg"), d["id"]))
         done.append(d["inv_no"] or f"DR {d['dr_no']}")
+        snaps.append(dict(snap(d), status="verified" if on else "draft"))
     con.commit()
     if done:
         log_event("Verified" if on else ("Back to draft (was in Tally)" if force else "Back to draft"),
-                  f"{len(done)} invoice(s)", done)
+                  f"{len(done)} invoice(s)", done, snaps)
     return bad
 
 
 def remove(ids):
-    gone = [d["inv_no"] or f"DR {d['dr_no']}" for d in rows(
-        f"SELECT inv_no, dr_no FROM drinv_drafts WHERE status<>'sent' AND id IN ({','.join('?' * len(ids))})", tuple(ids))]
+    gone_rows = rows(f"SELECT * FROM drinv_drafts WHERE status<>'sent' AND id IN ({','.join('?' * len(ids))})", tuple(ids))
+    gone = [d["inv_no"] or f"DR {d['dr_no']}" for d in gone_rows]
     get_db().execute(f"DELETE FROM drinv_drafts WHERE status<>'sent' AND id IN ({','.join('?' * len(ids))})", tuple(ids))
     get_db().commit()
     if gone:
-        log_event("Deleted drafts", f"{len(gone)} draft(s)", gone)
+        log_event("Deleted drafts", f"{len(gone)} draft(s)", gone, [snap(d) for d in gone_rows])
 
 
 # ---------------------------------------------------------------- Tally
@@ -810,17 +888,17 @@ def tally_result(did, text):
     errs = re.findall(r"<LINEERROR>(.*?)</LINEERROR>", text or "", re.S)
     created, altered = n("CREATED"), n("ALTERED")
     con = get_db()
-    d = one("SELECT inv_no FROM drinv_drafts WHERE id=?", (did,)) or {}
+    d = one("SELECT * FROM drinv_drafts WHERE id=?", (did,)) or {}
     if (created or altered) and not n("ERRORS"):
         con.execute("UPDATE drinv_drafts SET status='sent', sent_by=?, sent_at=?, tally_msg=? WHERE id=?",
                     (_user(), _now(), "Created in Tally", did))
         con.commit()
-        log_event("Sent to Tally", d.get("inv_no") or "", [d.get("inv_no")])
+        log_event("Sent to Tally", d.get("inv_no") or "", [d.get("inv_no")], dict(snap(d), status="sent"))
         return dict(ok=True)
     msg = "; ".join(html.unescape(e).strip() for e in errs) or (text or "").strip()[:300] or "Tally gave no answer"
     con.execute("UPDATE drinv_drafts SET tally_msg=? WHERE id=?", (msg, did))
     con.commit()
-    log_event("Tally refused", f"{d.get('inv_no')}: {msg}", [d.get("inv_no")])
+    log_event("Tally refused", f"{d.get('inv_no')}: {msg}", [d.get("inv_no")], dict(snap(d), tally_msg=msg))
     return dict(ok=False, error=msg)
 
 

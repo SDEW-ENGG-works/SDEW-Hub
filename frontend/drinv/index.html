@@ -99,12 +99,18 @@
 
         <section class="view-section" id="history-view">
             <div class="section-header"><div><h2>History</h2>
-                <p class="section-desc">Every DR upload, numbering, verification, send to Tally and Tally error, with the time and who did it.</p></div>
-                <div class="header-actions"><button class="btn btn-secondary" onclick="loadDrafts()">Refresh</button></div></div>
+                <p class="section-desc">Every DR upload, numbering, verification and send to Tally, in batches — the time, who did it,
+                    how many invoices and the amount. Click a batch to see every invoice in it exactly as it was.</p></div>
+                <div class="header-actions"><button class="btn btn-secondary" onclick="loadHistory()">Refresh</button></div></div>
             <div class="card">
-                <div class="card-title">History</div>
-                <p class="hint">Every upload, numbering, verification and send to Tally, with the time and who did it.</p>
-                <div class="table-wrapper" style="max-height:70vh;overflow:auto"><table class="data-table compact" id="di-history"></table></div>
+                <div class="di-bar">
+                    <div id="hs-chips" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
+                    <span class="sp"></span>
+                    <label class="di-small" for="hs-day">Day</label>
+                    <input type="date" id="hs-day" style="width:150px;padding:.3rem .45rem;border:1px solid #cbd5e1;border-radius:8px" onchange="loadHistory()">
+                </div>
+                <div class="hs-sum" id="hs-sum"></div>
+                <div id="hs-list"></div>
             </div>
         </section>
 
