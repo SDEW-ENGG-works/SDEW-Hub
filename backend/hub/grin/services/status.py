@@ -73,14 +73,19 @@ def data_dates():
                 pay_until=max(p1, p2, p3))
 
 
+# the tables the Status list is made from: it is made again only when one of them (or the settings) changed
+STATUS_TABLES = ("sales_lines", "gp_tally_lines", "gp_tally_invoices", "gp_register", "grin_lines", "gp_pay_lines",
+                 "gp_pay_files", "gp_mail_invoices", "gp_mails", "gp_notes", "gp_buyers")
+
+
 def build(as_of=None):
+    """The Status list. Phase 2: kept ready (memory + shared cache) until one of STATUS_TABLES or the settings
+    change - opening the page then reads a few rows instead of ~100,000."""
+    from ...services.cache import cached
+    from ..db import get_setting
     as_of = as_of or date.today().isoformat()
-    key = as_of
-    if _cache["key"] == key and time.time() - _cache["at"] < 120:
-        return _cache["data"]
-    data = _build(as_of)
-    _cache.update(key=key, at=time.time(), data=data)
-    return data
+    extra = dict(as_of=as_of, settings=load_settings(), plants=plants(), fetched=get_setting("grin.fetched"))
+    return cached(f"grin.status.{as_of}", STATUS_TABLES, lambda: _build(as_of), extra)
 
 
 def _build(as_of):

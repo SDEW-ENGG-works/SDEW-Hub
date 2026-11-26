@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 from ..db import rows
 from . import status as st
-from .defaults import plants
+from .defaults import load_settings, plants
 
 _cache = dict(src=None, data=None)
 
@@ -49,8 +49,18 @@ def invalidate():
 
 
 def _base():
-    """Every payment event (TAFE first, register for the rest) + the status rows. Cached 2 minutes."""
-    data = st.build()                     # cached 2 minutes there; rebuilt here only when that changes
+    """Every payment event (TAFE first, register for the rest) + the status rows. Phase 2: kept ready (memory +
+    shared cache) until one of the Status tables or the settings change."""
+    from ...services.cache import cached
+    from ..db import get_setting
+    from datetime import date as _date
+    extra = dict(today=_date.today().isoformat(), settings=load_settings(), plants=plants(),
+                 fetched=get_setting("grin.fetched"))
+    return cached("grin.monthly.base", st.STATUS_TABLES, _base_build, extra)
+
+
+def _base_build():
+    data = st.build()
     if _cache["data"] and _cache["src"] is data:
         return _cache["data"]
     credit_days = data["settings"]["credit_days"]
@@ -141,6 +151,9 @@ def _base():
     res = dict(rows=data["rows"], events=events, deductions=deductions, pvs=pvs, first_paid=first_paid,
                credit_days=credit_days, wait_days=data["settings"]["wait_days"], dates=data["dates"],
                tafe_from=min(tafe_dates) if tafe_dates else "", tafe_to=max(tafe_dates) if tafe_dates else "")
+    for pv in (res.get("pvs") or {}).values():          # sets -> lists: the same in memory and in the cache
+        if isinstance(pv.get("invoices"), set):
+            pv["invoices"] = sorted(pv["invoices"])
     _cache.update(src=data, data=res)
     return res
 

@@ -252,6 +252,12 @@ CREATE TABLE IF NOT EXISTS pc_jobs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, params TEXT, status TEXT, log TEXT, error TEXT,
     result TEXT, created_at TEXT, started_at TEXT, finished_at TEXT, host TEXT, updated_ts REAL);
 
+-- ---------- Phase 2: only work again when something changed ----------
+-- table_ver: a counter per table, raised automatically on every write to it (see Tracked below)
+-- hub_cache: ready-made results (e.g. the GRIN Status list), kept with the counters they were made from
+CREATE TABLE IF NOT EXISTS table_ver(t TEXT PRIMARY KEY, ver INTEGER, at TEXT);
+CREATE TABLE IF NOT EXISTS hub_cache(name TEXT PRIMARY KEY, sig TEXT, data BLOB, at TEXT);
+
 -- ---------- Indexes for the lookups the hub (and Ore) make all day (Turso bills every row a query looks at:
 -- without these, a lookup by invoice number or job status read the whole table every time) ----------
 CREATE INDEX IF NOT EXISTS ix_pc_jobs_status ON pc_jobs(status, id);
@@ -316,6 +322,58 @@ MIGRATIONS = [
 
 NOT_SET_ON_VERCEL = ("This website has no database set: add TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in "
                      "Vercel > Settings > Environment Variables and redeploy.")
+
+
+class Tracked:
+    """The hub's connection, noting which tables are written. Before the next read and at commit, each written
+    table's counter in table_ver goes up - so a cached result knows exactly when its data changed, without
+    anyone having to remember to say so."""
+    import re as _re
+    _W = _re.compile(r"^\s*(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+"
+                     r"[\"`\[]?([A-Za-z_]\w*)", _re.I)
+    QUIET = {"table_ver", "hub_cache", "pc_jobs", "pc_shots", "activity", "sync_runs", "logins", "sessions"}
+
+    def __init__(self, con):
+        self.con = con
+        self._dirty = set()
+
+    def _note(self, sql):
+        m = self._W.match(sql or "")
+        if m:
+            t = m.group(1).lower()
+            if t not in self.QUIET:
+                self._dirty.add(t)
+            return True
+        return False
+
+    def _bump(self):
+        if not self._dirty:
+            return
+        dirty, self._dirty = sorted(self._dirty), set()
+        from datetime import datetime as _dt
+        now = _dt.now().isoformat(timespec="seconds")
+        for t in dirty:
+            self.con.execute("INSERT INTO table_ver(t, ver, at) VALUES(?, 1, ?) "
+                             "ON CONFLICT(t) DO UPDATE SET ver=table_ver.ver+1, at=excluded.at", (t, now))
+
+    def execute(self, sql, args=()):
+        if not self._note(sql) and self._dirty:
+            self._bump()                       # a read after writes: counters first, so they go together
+        return self.con.execute(sql, args)
+
+    def executemany(self, sql, seq):
+        self._note(sql)
+        return self.con.executemany(sql, seq)
+
+    def executescript(self, script):
+        return self.con.executescript(script)
+
+    def commit(self):
+        self._bump()
+        return self.con.commit()
+
+    def __getattr__(self, name):
+        return getattr(self.con, name)
 
 
 def _connect():
@@ -478,7 +536,7 @@ def get_db():
     con = getattr(_local, "con", None)
     if con is None:
         try:
-            con = _connect()
+            con = Tracked(_connect())
         except Exception as e:  # noqa: BLE001
             raise DatabaseUnavailable(str(e))
         _local.con = con
