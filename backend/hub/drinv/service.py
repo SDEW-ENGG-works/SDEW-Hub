@@ -248,13 +248,15 @@ def history(parts):
 
 
 def dr_invoiced(dr_nos):
-    """DR numbers already written in a Tally invoice's narration -> {dr: inv_no}."""
+    """DR numbers already in a Tally sales invoice (its narration's DR, kept in the indexed dr_no column) ->
+    {dr: inv_no}. One indexed lookup for all of them."""
     found = {}
-    for d in dr_nos:
-        r = one("SELECT vno FROM gp_tally_vouchers WHERE narration LIKE ? AND vtype LIKE '%SALES%' AND cancelled=0 "
-                "ORDER BY vdate DESC LIMIT 1", (f"%DR {d}%",))
-        if r:
-            found[d] = r["vno"]
+    drs = sorted({str(d) for d in dr_nos if d})
+    for i in range(0, len(drs), 200):
+        part = drs[i:i + 200]
+        for r in rows(f"SELECT dr_no, vno FROM gp_tally_vouchers WHERE dr_no IN ({','.join('?' * len(part))}) "
+                      "AND vtype LIKE '%SALES%' AND cancelled=0 AND COALESCE(deleted,0)=0 ORDER BY vdate", tuple(part)):
+            found[r["dr_no"]] = r["vno"]
     return found
 
 

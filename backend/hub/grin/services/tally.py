@@ -303,6 +303,7 @@ def voucher_key(company, v):
 def store_full(vouchers, company):
     """Every voucher and its ledger lines, replaced on every pull (a voucher altered in Tally is read again)."""
     from ..db import get_db
+    company = company or ""          # never NULL: 'company = ?' then uses the indexes
     if not vouchers:
         return 0
     con = get_db()
@@ -310,16 +311,18 @@ def store_full(vouchers, company):
     for v in vouchers:
         key = voucher_key(company, v)
         total = sum((a for _, a in v["lines"] if a > 0), Decimal("0.00"))
+        drm = re.search(r"DR\W{0,3}(\d{7,9})", v["narration"] or "")
         con.execute("INSERT INTO gp_tally_vouchers(vkey, company, guid, vtype, vno, vdate, party, reference, narration, "
-                    "cancelled, optional, total, pulled_at, alter_id, deleted) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0) "
+                    "cancelled, optional, total, pulled_at, alter_id, deleted, dr_no) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?) "
                     "ON CONFLICT(vkey) DO UPDATE "
                     "SET company=excluded.company, guid=excluded.guid, vtype=excluded.vtype, vno=excluded.vno, "
                     "vdate=excluded.vdate, party=excluded.party, reference=excluded.reference, "
                     "narration=excluded.narration, cancelled=excluded.cancelled, optional=excluded.optional, "
                     "total=excluded.total, pulled_at=excluded.pulled_at, "
-                    "alter_id=COALESCE(excluded.alter_id, gp_tally_vouchers.alter_id), deleted=0",
+                    "alter_id=COALESCE(excluded.alter_id, gp_tally_vouchers.alter_id), deleted=0, dr_no=excluded.dr_no",
                     (key, company, v["guid"], v["vtype"], v["vno"], v["vdate"], v["party"], v["reference"],
-                     v["narration"], v["cancelled"], v["optional"], str(total), now, v.get("alter_id")))
+                     v["narration"], v["cancelled"], v["optional"], str(total), now, v.get("alter_id"),
+                     drm.group(1) if drm else None))
         con.execute("DELETE FROM gp_tally_vlines WHERE vkey=?", (key,))
         for seq, (ledger, amount) in enumerate(v["lines"]):
             con.execute("INSERT INTO gp_tally_vlines(vkey, seq, ledger, amount) VALUES(?,?,?,?)",
@@ -350,6 +353,7 @@ def is_sales(inv, parties):
 # ----------------------------------------------------------------------------- storing
 def store(invoices, company, source="Tally"):
     from ..db import get_db
+    company = company or ""
     con = get_db()
     now = datetime.now().isoformat(timespec="seconds")
     for inv in invoices:

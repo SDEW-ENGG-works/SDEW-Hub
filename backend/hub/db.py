@@ -252,6 +252,25 @@ CREATE TABLE IF NOT EXISTS pc_jobs(
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, params TEXT, status TEXT, log TEXT, error TEXT,
     result TEXT, created_at TEXT, started_at TEXT, finished_at TEXT, host TEXT, updated_ts REAL);
 
+-- ---------- Indexes for the lookups the hub (and Ore) make all day (Turso bills every row a query looks at:
+-- without these, a lookup by invoice number or job status read the whole table every time) ----------
+CREATE INDEX IF NOT EXISTS ix_pc_jobs_status ON pc_jobs(status, id);
+CREATE INDEX IF NOT EXISTS ix_pc_jobs_kind ON pc_jobs(kind, id);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_vouchers_vno ON gp_tally_vouchers(vno);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_vouchers_type ON gp_tally_vouchers(vtype, vdate);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_vouchers_pulled ON gp_tally_vouchers(company, pulled_at);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_invoices_date ON gp_tally_invoices(company, inv_date);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_invoices_pulled ON gp_tally_invoices(company, pulled_at);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_invoices_no ON gp_tally_invoices(inv_no);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_lines_part ON gp_tally_lines(part);
+CREATE INDEX IF NOT EXISTS ix_gp_tally_stock_co ON gp_tally_stock(company, as_on);
+CREATE INDEX IF NOT EXISTS ix_drinv_drafts_status ON drinv_drafts(status);
+CREATE INDEX IF NOT EXISTS ix_drinv_drafts_dr ON drinv_drafts(dr_no, part);
+CREATE INDEX IF NOT EXISTS ix_drinv_drafts_inv ON drinv_drafts(inv_no);
+CREATE INDEX IF NOT EXISTS ix_drinv_log_at ON drinv_log(at);
+CREATE INDEX IF NOT EXISTS ix_grin_lines_date ON grin_lines(grin_date);
+CREATE INDEX IF NOT EXISTS ix_gp_pay_lines_date ON gp_pay_lines(pv_date);
+
 -- ---------- Logins (Admin page) ----------
 CREATE TABLE IF NOT EXISTS users(
     id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, pass_hash TEXT, access TEXT, active INTEGER DEFAULT 1,
@@ -280,6 +299,7 @@ CREATE TABLE IF NOT EXISTS wipe_rows(
 # columns added after the first version: (table, column, type)
 MIGRATIONS = [
     ("po_headers", "source", "TEXT"),
+    ("gp_tally_vouchers", "dr_no", "TEXT"),
     ("drinv_drafts", "title", "TEXT"), ("drinv_drafts", "price_date", "TEXT"), ("drinv_log", "data", "TEXT"),
     ("run_lines", "old_src", "TEXT"),
     ("batches", "data", "BLOB"),
@@ -409,8 +429,48 @@ def migrate(con):
                 if "duplicate column" not in str(e).lower():
                     raise
     con.commit()
+    try:
+        con.execute("CREATE INDEX IF NOT EXISTS ix_gp_tally_vouchers_dr ON gp_tally_vouchers(dr_no)")
+        con.commit()
+    except Exception as e:  # noqa: BLE001
+        print("dr_no index:", e)
+    _blank_companies(con)
+    _fill_dr_numbers(con)
     from .seed import seed_open_items
     seed_open_items(con)
+
+
+def _fill_dr_numbers(con):
+    """Once: the DR number written in each Tally invoice's narration ('... DR 12085284') into its own indexed
+    column, so 'is this DR already invoiced?' is one index lookup, not a text search through every voucher."""
+    import re as _re
+    try:
+        if con.execute("SELECT value FROM settings WHERE key='perf.dr_no_v1'").fetchone():
+            return
+        rows_ = con.execute("SELECT vkey, narration FROM gp_tally_vouchers WHERE narration LIKE '%DR%'").fetchall()
+        for r in rows_:
+            m = _re.search(r"DR\W{0,3}(\d{7,9})", r[1] or "")
+            if m:
+                con.execute("UPDATE gp_tally_vouchers SET dr_no=? WHERE vkey=?", (m.group(1), r[0]))
+        con.execute("INSERT OR REPLACE INTO settings(key, value) VALUES('perf.dr_no_v1', '1')")
+        con.commit()
+    except Exception as e:  # noqa: BLE001
+        print("DR number fill skipped:", e)
+
+
+def _blank_companies(con):
+    """Once: Tally company NULL -> '' in the Tally tables, so 'company = ?' can use the indexes (Ore used
+    COALESCE(company,'') = ?, which reads every row)."""
+    try:
+        if con.execute("SELECT value FROM settings WHERE key='perf.company_blank_v1'").fetchone():
+            return
+        for t in ("gp_tally_invoices", "gp_tally_vouchers", "gp_tally_groups", "gp_tally_ledgers",
+                  "gp_tally_balances", "gp_tally_stock"):
+            con.execute(f"UPDATE {t} SET company='' WHERE company IS NULL")
+        con.execute("INSERT OR REPLACE INTO settings(key, value) VALUES('perf.company_blank_v1', '1')")
+        con.commit()
+    except Exception as e:  # noqa: BLE001
+        print("company blank fix skipped:", e)
 
 
 def get_db():

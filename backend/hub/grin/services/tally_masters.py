@@ -183,6 +183,7 @@ def parse(kind, text):
 def store(kind, items, company, as_on=None):
     """One answer -> its table. The rows of that company (and date) are replaced as a whole, so a ledger or item
     deleted in Tally goes too."""
+    company = company or ""
     from ..db import get_db
     con = get_db()
     now = datetime.now().isoformat(timespec="seconds")
