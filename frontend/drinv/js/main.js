@@ -69,9 +69,12 @@ function render() {
     const ed = (d, k, v, cls = '', w = '') => d.status === 'sent' ? `<span class="ro ${cls}">${esc(v ?? '')}</span>`
         : `<input class="ed ${cls}" ${w} value="${esc(v ?? '')}" onchange="edit(${d.id}, '${k}', this.value)">`;
     const box = (d, k, v, label, hint) => `<label class="mini"><span>${label}</span>${ed(d, k, v, 'num' + (v ? '' : ' miss'),
-        `placeholder="enter"${hint ? ` title="${esc(hint)}"` : ''}`)}</label>`;
+        `placeholder="enter" data-nav="${d.id}:${k}"${hint ? ` title="${esc(hint)}"` : ''}`)}</label>`;
     // one compact line per invoice (fits the page width, no sideways scrolling); the points to check go in a
     // thin line under it
+    const was = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.nav
+        ? { nav: document.activeElement.dataset.nav, val: document.activeElement.value,
+            typed: document.activeElement.value !== document.activeElement.defaultValue } : null;
     t.innerHTML = `<colgroup><col style="width:2.5%"><col style="width:10%"><col style="width:8%"><col style="width:14.5%">
         <col style="width:14%"><col style="width:7%"><col style="width:8.5%"><col style="width:10%"><col style="width:7.5%">
         <col style="width:13%"><col style="width:5%"></colgroup>
@@ -88,7 +91,7 @@ function render() {
             <td><input type="checkbox" ${DI.ticked.has(d.id) ? 'checked' : ''} onchange="tick(${d.id}, this.checked)"></td>
             <td>${ed(d, 'inv_no', d.inv_no, '', 'placeholder="auto from Tally"')}
                 ${d.status === 'sent' ? `<div class="di-small">${dmy(d.inv_date)}</div>` : `<input class="ed small" type="date" value="${esc(d.inv_date)}" onchange="edit(${d.id}, 'inv_date', this.value)">`}</td>
-            <td><b>${esc(d.plant || '?')}</b> <span class="di-small">DR ${esc(d.dr_no)}</span><div class="di-small">PO ${esc(d.po_no)}</div></td>
+            <td><b>${esc(d.plant || '?')}</b> <span class="di-dr">DR ${esc(d.dr_no)}</span><div class="di-small">PO ${esc(d.po_no)}</div></td>
             <td class="clip"><b>${esc(d.part)}</b> <span class="di-small" title="${esc(d.descr || '')}">${esc(d.descr || '')}</span>
                 ${ed(d, 'item_name', d.item_name, 'small' + (d.item_name ? '' : ' miss'), `placeholder="Tally stock item" title="${esc(d.item_name || '')}"`)}</td>
             <td><div class="trio">${box(d, 'qty', num(d.qty), 'Total', `DR qty ${num(d.dr_qty)}`)}${box(d, 'packages', num(d.packages), 'Pkgs', `DR: ${num(d.dr_req)} ${d.bin || ''}`)}${box(d, 'pieces', num(d.pieces), 'Pcs', `DR: ${num(d.dr_size)} each`)}</div>
@@ -106,6 +109,10 @@ function render() {
             </tr>` + (sub ? `<tr class="${d.status} sub"><td></td><td colspan="10"><div class="di-iss">${notes.map(i => `<span class="${i.level}">${esc(i.text).replace(/DR (\d{7,9})/g, (m, dr) => `<a href="#" onclick="findInvoice('${dr}');return false">DR ${dr}</a>`)}</span>`).join('')}
                 ${d.tally_msg && d.status !== 'sent' ? `<span class="error">Tally: ${esc(d.tally_msg)}</span>` : ''}</div></td></tr>` : '');
         }).join('') + '</tbody>';
+    if (was) {                 // the table was drawn again (a value was saved): stay in the same box
+        const el = t.querySelector(`[data-nav="${was.nav}"]`);
+        if (el) { el.focus(); if (was.typed) el.value = was.val; else el.select(); }
+    }
     const sum = ds.reduce((a, d) => a + (d.total || 0), 0);
     document.getElementById('di-foot').textContent = `${ds.length} invoice(s), total ₹${inr(sum)}. Ticked: ${DI.ticked.size}.`;
 }
@@ -119,7 +126,7 @@ function packCell(d) {
     const opts = crates.map(c => `<option value="crate:${c.crate}" ${val === 'crate:' + c.crate ? 'selected' : ''} title="Crate ${c.crate}${c.lid ? ' with lid ' + c.lid : ''}">${c.crate}</option>`).join('') +
         `<option value="carton" ${val === 'carton' ? 'selected' : ''}>Carton</option><option value="text" ${val === 'text' ? 'selected' : ''}>Other</option>`;
     const head = `<div class="pk"><select class="ed small" onchange="packSet(${d.id}, this.value)">${opts}</select>
-        ${p.kind !== 'text' ? `<label class="pk-n" title="Crates and lids (the same count)"><input class="ed num small" type="number" min="1" value="${p.nos || ''}"
+        ${p.kind !== 'text' ? `<label class="pk-n" title="Crates and lids (the same count)"><input class="ed num small" type="number" min="1" value="${p.nos || ''}" data-nav="${d.id}:pack_nos"
             onchange="edit(${d.id}, 'pack_nos', this.value)"><span>nos</span></label>` : ''}</div>`;
     const text = p.kind === 'text'
         ? `<textarea class="ed small rem" rows="${Math.max(2, Math.ceil((d.remarks || '').length / 20))}" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`
@@ -632,3 +639,16 @@ document.getElementById('dc-to').value = todayIso();
     const tab = location.hash.replace('#', '');
     if (['history', 'admin'].includes(tab) && document.getElementById(`nav-${tab}-btn`).style.display !== 'none') switchView(tab);
 }
+
+// Enter (or Tab) in Total -> Pkgs -> Pcs -> crate nos -> the next invoice's Total, like a form: the value is
+// saved and the cursor goes on to the next box
+document.addEventListener('keydown', e => {
+    const el = e.target;
+    if (!el.dataset || !el.dataset.nav || !(e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey))) return;
+    const all = [...document.querySelectorAll('#di-table [data-nav]')];
+    const next = all[all.indexOf(el) + 1];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();              // leaving the box saves it (its change event), once
+    next.select();
+});

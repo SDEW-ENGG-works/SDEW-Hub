@@ -83,3 +83,7 @@
 #di-table .pk-n input { width: 2.6rem; border-color: #e2e8f0; background: #fff; }
 #di-table .pk-n span { font-size: .65rem; color: var(--muted, #64748b); }
 #di-table .pk-text { font-size: .72rem; line-height: 1.3; margin-top: .25rem; color: #334155; word-break: break-word; }
+
+/* DR number: easy to spot */
+#di-table .di-dr { background: #fef08a; color: #713f12; font-weight: 600; font-size: .72rem; padding: 0 .3rem;
+    border-radius: 3px; white-space: nowrap; }
