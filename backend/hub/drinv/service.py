@@ -283,12 +283,56 @@ def next_number():
 
 
 # ---------------------------------------------------------------- figures
-def remarks_for(h, packages, dr_no, bin_type=""):
-    n = int(packages or 0) or 1
-    if h and h.get("crate"):
-        return f"FOR CRATE - {h['crate']} - {n} NOS LID - {h['lid']} - {n} NOS DR {dr_no}"
-    if (h and h.get("carton")) or "CARTON" in (bin_type or "").upper():
+def crate_types():
+    """CHEP crates and their lids, from CHEP Transfer's settings (pallet A399014402 -> crate 14402, lid 13054)."""
+    try:
+        from ..chep.services.defaults import load_settings as chep_settings
+        types = chep_settings()["types"]
+    except Exception:  # noqa: BLE001
+        from ..chep.services.defaults import DEFAULT_SETTINGS
+        types = DEFAULT_SETTINGS["types"]
+    out = []
+    for t in types:
+        pal, lid = str(t.get("pallet") or "").strip(), str(t.get("lid") or "").strip()
+        if pal:
+            out.append(dict(crate=pal[-5:], lid=lid[-5:] if lid else ""))
+    return out
+
+
+def lid_for(crate):
+    return next((t["lid"] for t in crate_types() if t["crate"] == str(crate)), "")
+
+
+def build_remarks(kind, crate, nos, dr_no):
+    """FOR CRATE - 14402 - 2 NOS LID - 13054 - 2 NOS DR 12085284 (lid = the crate's lid in CHEP, same count)
+    or FOR CARTON BOX - 2 NOS DR 12085284."""
+    n = int(float(nos or 0)) or 1
+    if kind == "crate" and crate:
+        lid = lid_for(crate)
+        return (f"FOR CRATE - {crate} - {n} NOS LID - {lid} - {n} NOS DR {dr_no}" if lid
+                else f"FOR CRATE - {crate} - {n} NOS DR {dr_no}")
+    if kind == "carton":
         return f"FOR CARTON BOX - {n} NOS DR {dr_no}"
+    return f"DR {dr_no}"
+
+
+def parse_remarks(text):
+    """Remarks -> dict(kind='crate'|'carton'|'text', crate, lid, nos)."""
+    t = text or ""
+    m = re.search(r"CRATE\s*-\s*(\d+)\s*-\s*(\d+)\s*NOS(?:.*?LID\s*-\s*(\d+))?", t, re.I)
+    if m:
+        return dict(kind="crate", crate=m.group(1), nos=int(m.group(2)), lid=m.group(3) or "")
+    m = re.search(r"CARTON\s*BOX\s*-\s*(\d+)\s*NOS", t, re.I)
+    if m:
+        return dict(kind="carton", crate="", nos=int(m.group(1)), lid="")
+    return dict(kind="text", crate="", nos=None, lid="")
+
+
+def remarks_for(h, packages, dr_no, bin_type=""):
+    if h and h.get("crate"):
+        return build_remarks("crate", h["crate"], packages, dr_no)
+    if (h and h.get("carton")) or "CARTON" in (bin_type or "").upper():
+        return build_remarks("carton", "", packages, dr_no)
     return f"DR {dr_no}"
 
 
@@ -505,6 +549,8 @@ def listing(status=""):
     q = "SELECT * FROM drinv_drafts" + (" WHERE status=?" if status else "") + " ORDER BY status='sent', inv_no='', inv_no, id"
     ds = [_row(r) for r in rows(q, (status,) if status else ())]
     _add_periods(ds)
+    for d in ds:
+        d["pack"] = parse_remarks(d.get("remarks"))
     cnt = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM drinv_drafts GROUP BY status")}
     return dict(drafts=ds, counts=cnt, next_no=next_number(), config=public_config(), history=history_log())
 
@@ -517,7 +563,8 @@ def public_config():
                                  address=bool(v.get("has_address")))
                          for p, v in t.items()},
                 last_learn=c.get("last_learn") or "",
-                builtin=[ds for _, ds, _, _ in VOUCHER_UDF + ITEM_UDF])
+                builtin=[ds for _, ds, _, _ in VOUCHER_UDF + ITEM_UDF],
+                crates=crate_types())
 
 
 def update(did, patch):
@@ -527,7 +574,7 @@ def update(did, patch):
     if d["status"] == "sent":
         raise ValueError("Already sent to Tally - change it in Tally")
     for k in EDITABLE:
-        if k in patch:
+        if k in patch and k not in ("pack_kind", "pack_crate", "pack_nos"):
             v = patch[k]
             if k in ("qty", "pieces", "packages", "rate", "gst_rate"):
                 v = float(v) if str(v).strip() not in ("", "None") else None
@@ -550,9 +597,19 @@ def update(did, patch):
     elif "qty" in patch and "pieces" not in patch and "packages" not in patch and d.get("pieces") \
             and q % float(d["pieces"]) == 0:
         d["packages"] = q / float(d["pieces"])
-    if ("packages" in patch or "pieces" in patch or "qty" in patch) and "remarks" not in patch:
-        d["remarks"] = re.sub(r"(CRATE - \d+ - |LID - \d+ - |CARTON BOX - )\d+( NOS)",
-                              lambda m: f"{m.group(1)}{int(d['packages'] or 0)}{m.group(2)}", d["remarks"] or "")
+    if any(k in patch for k in ("pack_kind", "pack_crate", "pack_nos")) and "remarks" not in patch:
+        cur = parse_remarks(d.get("remarks"))
+        kind = patch.get("pack_kind") or cur["kind"]
+        crate = patch.get("pack_crate") or (cur["crate"] if kind == "crate" else "")
+        if kind == "crate" and not crate:
+            crate = (crate_types() or [{}])[0].get("crate", "")
+        nos = patch.get("pack_nos") or cur["nos"] or d.get("packages") or 1
+        if kind in ("crate", "carton"):
+            d["remarks"] = build_remarks(kind, crate, nos, d["dr_no"])
+    elif ("packages" in patch or "pieces" in patch or "qty" in patch) and "remarks" not in patch:
+        cur = parse_remarks(d.get("remarks"))
+        if cur["kind"] in ("crate", "carton") and d.get("packages"):
+            d["remarks"] = build_remarks(cur["kind"], cur["crate"], d["packages"], d["dr_no"])
     compute(d)
     d["status"] = "draft"
     cols = [c for c in d if c != "id"]

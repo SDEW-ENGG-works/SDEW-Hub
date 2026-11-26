@@ -100,7 +100,7 @@ function render() {
             <td>${gstCell(d)}</td>
             <td class="num">${n2(d.amount)}<div><b>${n2(d.total)}</b></div>${d.round_off ? `<div class="di-small">R/O ${d.round_off > 0 ? '+' : ''}${(+d.round_off).toFixed(2)}</div>` : ''}</td>
             <td>${d.status === 'sent' ? `<span class="di-small">${esc(d.remarks || '')}</span>`
-                : `<textarea class="ed small rem" rows="${Math.max(2, Math.ceil((d.remarks || '').length / 20))}" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`}</td>
+                : packCell(d)}</td>
             <td><span class="di-b ${d.status}${st === 'Ready' ? ' ready' : ''}">${st}</span>
                 ${d.verified_by && d.status !== 'draft' ? `<div class="di-small">${esc(d.verified_by)}</div>` : ''}</td>
             </tr>` + (sub ? `<tr class="${d.status} sub"><td></td><td colspan="10"><div class="di-iss">${notes.map(i => `<span class="${i.level}">${esc(i.text).replace(/DR (\d{7,9})/g, (m, dr) => `<a href="#" onclick="findInvoice('${dr}');return false">DR ${dr}</a>`)}</span>`).join('')}
@@ -108,6 +108,30 @@ function render() {
         }).join('') + '</tbody>';
     const sum = ds.reduce((a, d) => a + (d.total || 0), 0);
     document.getElementById('di-foot').textContent = `${ds.length} invoice(s), total ₹${inr(sum)}. Ticked: ${DI.ticked.size}.`;
+}
+
+// Remarks: crate (its lid from CHEP Transfer comes with it) or carton box, one count for crate and lid;
+// "Other" keeps free text
+function packCell(d) {
+    const p = d.pack || { kind: 'text' };
+    const crates = (DI.data.config && DI.data.config.crates) || [];
+    const val = p.kind === 'crate' ? `crate:${p.crate}` : p.kind;
+    const opts = crates.map(c => `<option value="crate:${c.crate}" ${val === 'crate:' + c.crate ? 'selected' : ''} title="Crate ${c.crate}${c.lid ? ' with lid ' + c.lid : ''}">${c.crate}</option>`).join('') +
+        `<option value="carton" ${val === 'carton' ? 'selected' : ''}>Carton</option><option value="text" ${val === 'text' ? 'selected' : ''}>Other</option>`;
+    const head = `<div class="pk"><select class="ed small" onchange="packSet(${d.id}, this.value)">${opts}</select>
+        ${p.kind !== 'text' ? `<label class="pk-n" title="Crates and lids (the same count)"><input class="ed num small" type="number" min="1" value="${p.nos || ''}"
+            onchange="edit(${d.id}, 'pack_nos', this.value)"><span>nos</span></label>` : ''}</div>`;
+    const text = p.kind === 'text'
+        ? `<textarea class="ed small rem" rows="${Math.max(2, Math.ceil((d.remarks || '').length / 20))}" onchange="edit(${d.id}, 'remarks', this.value)">${esc(d.remarks || '')}</textarea>`
+        : `<div class="pk-text">${esc(d.remarks || '')}</div>`;
+    return head + text;
+}
+
+function packSet(id, v) {
+    if (v === 'text') { const d = DI.data.drafts.find(x => x.id === id); if (d) { d.pack = { kind: 'text' }; render(); } return; }
+    if (v === 'carton') return edit(id, 'pack_kind', 'carton');
+    apiJson(`/api/drinv/drafts/${id}`, 'POST', { pack_kind: 'crate', pack_crate: v.split(':')[1] }).then(() => loadDrafts())
+        .catch(e => showToast(e.message, 'danger'));
 }
 
 // PO price period: which of the PO's prices the invoice uses (picked by its "price as on" day)
