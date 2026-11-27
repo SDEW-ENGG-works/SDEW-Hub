@@ -198,7 +198,7 @@ def package(tdata, rows, fname):
     An invoice's rows are never split across two parts."""
     groups = []
     for r in rows:
-        key = (r.get("customer"), r.get("invoice"))
+        key = (r.get("customer"), str(r.get("invoice") or "").split("/")[0].strip())  # 16416/26-27 + 16416
         if groups and groups[-1][0] == key:
             groups[-1][1].append(r)
         else:

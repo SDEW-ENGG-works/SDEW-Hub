@@ -124,14 +124,17 @@ def build_rows(lines, settings, doc_date, extra):
     out = []
     for ln in use:
         d = doc_date or (date.fromisoformat(ln["inv_date"]) if ln["inv_date"] else None)
-        for code, n in ln["types"].items():
+        # one invoice with two CHEP sizes (packing list: 1 x 14402 and 3 x 14403 on one row): LEAP takes an
+        # invoice number once per size only as "16416/26-27" for the first size and "16416" for the next
+        for i, (code, n) in enumerate(ln["types"].items()):
             t = tmap[code]
+            inv = ln["invoice"] if i == 0 else ln["invoice"].split("/")[0].strip()
             for sku in (t["pallet"], t.get("lid")):
                 if not sku:
                     continue
                 out.append(dict(bp_code=settings["bp_code"], customer=cust.get(ln["plant"], ""), sku=sku, qty=n,
                                 doc_date=d, transporter=extra.get("transporter", ""), vehicle=extra.get("vehicle", ""),
-                                lr=extra.get("lr", ""), invoice=ln["invoice"], remarks=ln["part_name"],
+                                lr=extra.get("lr", ""), invoice=inv, remarks=ln["part_name"],
                                 plant=ln["plant"], type=code, key=ln["key"]))
     return out
 
